@@ -63,3 +63,4 @@ class JobRow(Base):
     completed_episodes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_episodes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    dismissed_at: Mapped[str | None] = mapped_column(String, nullable=True)
