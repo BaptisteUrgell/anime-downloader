@@ -33,6 +33,10 @@ class RetryFailedRequest(BaseModel):
     season_id: str
 
 
+class DismissCompletedResponse(BaseModel):
+    dismissed_count: int
+
+
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +52,7 @@ class JobResponse(BaseModel):
     error_message: str | None = None
     current_episode_number: int | None = None
     episode_progress_percent: float | None = None
+    dismissed_at: str | None = None
 
 
 class EpisodeResponse(BaseModel):

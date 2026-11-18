@@ -11,6 +11,7 @@ from sqlalchemy import Engine
 from anime_downloader.domain.model import MediaLocator
 from anime_downloader.domain.ports import (
     AdapterRegistry as AdapterRegistryPort,
+    Clock,
     IdGenerator,
     JobRepository,
     LibraryRepository,
@@ -18,6 +19,7 @@ from anime_downloader.domain.ports import (
     ProgressCallback,
 )
 from anime_downloader.infrastructure.adapter_registry import AdapterRegistry
+from anime_downloader.infrastructure.clock import SystemClock
 from anime_downloader.infrastructure.db.session import (
     create_engine_for_path,
     make_session_factory,
@@ -97,6 +99,7 @@ class AppContainer:
     ids: IdGenerator
     downloader: MediaDownloader
     worker: DownloadWorker
+    clock: Clock
 
 
 def build_default_registry() -> AdapterRegistryPort:
@@ -139,6 +142,7 @@ def build_container(
         ids=ids,
         downloader=resolved_downloader,
         worker=worker,
+        clock=SystemClock(),
     )
 
 
@@ -178,3 +182,7 @@ def get_worker(
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> DownloadWorker:
     return container.worker
+
+
+def get_clock(request: Request) -> Clock:
+    return request.app.state.container.clock

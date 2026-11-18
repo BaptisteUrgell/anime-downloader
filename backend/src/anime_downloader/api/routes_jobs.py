@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from anime_downloader.api.deps import (
+    get_clock,
     get_id_generator,
     get_job_repository,
     get_library_repository,
@@ -11,6 +12,7 @@ from anime_downloader.api.deps import (
 )
 from anime_downloader.api.schemas import (
     CreateJobRequest,
+    DismissCompletedResponse,
     EpisodePreviewResponse,
     ErrorResponse,
     JobResponse,
@@ -18,12 +20,17 @@ from anime_downloader.api.schemas import (
     RetryFailedRequest,
     SeasonPreviewResponse,
 )
+from anime_downloader.application.dismiss_job import (
+    dismiss_completed_jobs,
+    dismiss_job,
+)
 from anime_downloader.application.get_job import get_job, list_jobs
 from anime_downloader.application.preview_season import preview_season
 from anime_downloader.application.retry_failed import retry_failed
 from anime_downloader.application.start_season_download import start_season_download
 from anime_downloader.domain.ports import (
     AdapterRegistry,
+    Clock,
     IdGenerator,
     JobRepository,
     LibraryRepository,
@@ -140,6 +147,36 @@ def retry_failed_endpoint(
     response = _job_response(job, worker)
     worker.enqueue(job.id)
     return response
+
+
+@router.post(
+    "/dismiss-completed",
+    response_model=DismissCompletedResponse,
+    operation_id="dismissCompletedJobs",
+)
+def dismiss_completed_endpoint(
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    clock: Annotated[Clock, Depends(get_clock)],
+) -> DismissCompletedResponse:
+    return DismissCompletedResponse(
+        dismissed_count=dismiss_completed_jobs(jobs, clock)
+    )
+
+
+@router.post(
+    "/{id}/dismiss",
+    response_model=JobResponse,
+    operation_id="dismissJob",
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def dismiss_job_endpoint(
+    id: str,
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    clock: Annotated[Clock, Depends(get_clock)],
+    worker: Annotated[DownloadWorker, Depends(get_worker)],
+) -> JobResponse:
+    job = dismiss_job(id, jobs, clock)
+    return _job_response(job, worker)
 
 
 @router.get(

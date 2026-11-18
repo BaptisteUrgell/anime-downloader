@@ -328,6 +328,73 @@ def test_lifespan_resumes_incomplete_jobs_and_stops_worker_on_shutdown(
     assert exported_app is not None
 
 
+def test_dismiss_job_and_dismiss_completed(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/jobs",
+            json={"url": "https://demo.local/season/demo-show/1"},
+        )
+        assert created.status_code == 201
+        job_id = created.json()["id"]
+
+        _poll_until(
+            lambda: client.get(f"/api/jobs/{job_id}").json()["status"]
+            in {"completed", "failed"}
+        )
+
+        listed_before = client.get("/api/jobs")
+        assert listed_before.status_code == 200
+        assert any(j["id"] == job_id for j in listed_before.json())
+
+        dismissed = client.post(f"/api/jobs/{job_id}/dismiss")
+        assert dismissed.status_code == 200
+        assert dismissed.json()["dismissed_at"] is not None
+
+        listed_after = client.get("/api/jobs")
+        assert all(j["id"] != job_id for j in listed_after.json())
+
+
+def test_dismiss_active_job_conflict(tmp_path: Path) -> None:
+    release = threading.Event()
+
+    class GatedDownloader:
+        def download(self, media, destination, *, on_progress=None) -> str:
+            release.wait(timeout=5.0)
+            return FakeMediaDownloader(payload=b"x").download(media, destination)
+
+    app = create_app(tmp_path, downloader=GatedDownloader())
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/jobs",
+            json={"url": "https://demo.local/season/demo-show/1"},
+        )
+        job_id = created.json()["id"]
+        _poll_until(
+            lambda: client.get(f"/api/jobs/{job_id}").json()["status"] == "running"
+        )
+        resp = client.post(f"/api/jobs/{job_id}/dismiss")
+        assert resp.status_code == 409
+        release.set()
+
+
+def test_dismiss_completed_endpoint_counts(tmp_path: Path) -> None:
+    app = create_app(tmp_path)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/jobs",
+            json={"url": "https://demo.local/season/demo-show/1"},
+        )
+        job_id = created.json()["id"]
+        _poll_until(
+            lambda: client.get(f"/api/jobs/{job_id}").json()["status"] == "completed"
+        )
+        resp = client.post("/api/jobs/dismiss-completed")
+        assert resp.status_code == 200
+        assert resp.json() == {"dismissed_count": 1}
+        assert client.get("/api/jobs").json() == []
+
+
 def test_cors_allows_frontend_origin(tmp_path: Path) -> None:
     app = create_app(tmp_path)
     with TestClient(app) as client:
@@ -383,7 +450,9 @@ def test_exported_openapi_json_matches_app_schema() -> None:
         "/api/jobs/preview",
         "/api/jobs",
         "/api/jobs/retry-failed",
+        "/api/jobs/dismiss-completed",
         "/api/jobs/{id}",
+        "/api/jobs/{id}/dismiss",
         "/api/library",
     }
 

@@ -211,6 +211,89 @@
         }
       }
     },
+    "/api/jobs/dismiss-completed": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Dismiss Completed Endpoint",
+        "operationId": "dismissCompletedJobs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DismissCompletedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}/dismiss": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Dismiss Job Endpoint",
+        "operationId": "dismissJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{id}": {
       "get": {
         "tags": [
@@ -303,6 +386,19 @@
           "url"
         ],
         "title": "CreateJobRequest"
+      },
+      "DismissCompletedResponse": {
+        "properties": {
+          "dismissed_count": {
+            "type": "integer",
+            "title": "Dismissed Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dismissed_count"
+        ],
+        "title": "DismissCompletedResponse"
       },
       "EpisodePreviewResponse": {
         "properties": {
@@ -513,6 +609,17 @@
               }
             ],
             "title": "Episode Progress Percent"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
           }
         },
         "type": "object",
