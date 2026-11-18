@@ -577,10 +577,10 @@ EOF
 From repo root:
 
 ```bash
-task openapi
+task api:sync
 ```
 
-(If Task target differs, use the existing `openapi` / export task from `Taskfile.yml` that writes `frontend/openapi.json` then `npm run openapi-ts`.)
+(`api:sync` exports FastAPI OpenAPI to `frontend/openapi.json` then runs `npm run openapi-ts`.)
 
 - [ ] **Step 2: Verify generated symbols**
 
