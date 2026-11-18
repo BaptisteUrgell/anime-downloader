@@ -24,3 +24,7 @@ class SeasonNotFound(DomainError):
 
 class NoFailedEpisodes(DomainError):
     pass
+
+
+class JobCannotBeDismissed(DomainError):
+    pass

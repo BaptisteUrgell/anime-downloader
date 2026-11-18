@@ -16,6 +16,7 @@ from anime_downloader.domain.errors import (
     InvalidSourceUrl,
     JobNotFound,
     NoAdapterFound,
+    JobCannotBeDismissed,
     NoFailedEpisodes,
     SeasonNotFound,
 )
@@ -34,7 +35,7 @@ def _status_for_domain_error(exc: DomainError) -> int:
         return status.HTTP_400_BAD_REQUEST
     if isinstance(exc, (JobNotFound, SeasonNotFound)):
         return status.HTTP_404_NOT_FOUND
-    if isinstance(exc, NoFailedEpisodes):
+    if isinstance(exc, (NoFailedEpisodes, JobCannotBeDismissed)):
         return status.HTTP_409_CONFLICT
     if isinstance(exc, DiscoveryFailed):
         return status.HTTP_502_BAD_GATEWAY

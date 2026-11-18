@@ -13,4 +13,4 @@ def get_job(job_id: str, jobs: JobRepository) -> DownloadJob:
 
 
 def list_jobs(jobs: JobRepository) -> list[DownloadJob]:
-    return jobs.list_jobs()
+    return [job for job in jobs.list_jobs() if job.dismissed_at is None]

@@ -276,6 +276,23 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     assert [job.id for job in repo.list_resumable()] == ["job-running"]
 
 
+def test_job_repository_persists_dismissed_at(session_factory) -> None:
+    repo = SqlAlchemyJobRepository(session_factory)
+    job = DownloadJob(
+        id="job-dismissed",
+        source_url="https://demo.local/season/show/1",
+        adapter_id="demo",
+        status=JobStatus.COMPLETED,
+        total_episodes=1,
+        completed_episodes=1,
+        dismissed_at="2026-11-18T12:00:00+00:00",
+    )
+    repo.save(job)
+    loaded = repo.get("job-dismissed")
+    assert loaded is not None
+    assert loaded.dismissed_at == "2026-11-18T12:00:00+00:00"
+
+
 def test_fake_media_downloader_writes_minimal_bytes_and_creates_parents(
     tmp_path: Path,
 ) -> None:

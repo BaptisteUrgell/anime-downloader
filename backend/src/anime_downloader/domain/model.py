@@ -104,3 +104,4 @@ class DownloadJob:
     completed_episodes: int = 0
     failed_episodes: int = 0
     error_message: str | None = None
+    dismissed_at: str | None = None

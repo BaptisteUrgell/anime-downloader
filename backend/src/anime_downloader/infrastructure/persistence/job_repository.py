@@ -24,6 +24,7 @@ class SqlAlchemyJobRepository:
                 row.completed_episodes = job.completed_episodes
                 row.failed_episodes = job.failed_episodes
                 row.error_message = job.error_message
+                row.dismissed_at = job.dismissed_at
             else:
                 row = JobRow(
                     id=job.id,
@@ -36,6 +37,7 @@ class SqlAlchemyJobRepository:
                     completed_episodes=job.completed_episodes,
                     failed_episodes=job.failed_episodes,
                     error_message=job.error_message,
+                    dismissed_at=job.dismissed_at,
                 )
                 session.add(row)
             session.commit()
@@ -72,4 +74,5 @@ def _to_job(row: JobRow) -> DownloadJob:
         completed_episodes=row.completed_episodes,
         failed_episodes=row.failed_episodes,
         error_message=row.error_message,
+        dismissed_at=row.dismissed_at,
     )
