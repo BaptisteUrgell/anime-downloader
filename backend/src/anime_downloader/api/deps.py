@@ -184,5 +184,7 @@ def get_worker(
     return container.worker
 
 
-def get_clock(request: Request) -> Clock:
-    return request.app.state.container.clock
+def get_clock(
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> Clock:
+    return container.clock

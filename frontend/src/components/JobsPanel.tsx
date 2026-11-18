@@ -84,13 +84,20 @@ function canDismissJob(status: JobStatus): boolean {
   }
 }
 
+function humanizeSlug(slug: string): string {
+  return slug.replace(/-/g, ' ');
+}
+
 function parseJobSeasonLabel(sourceUrl: string): { title: string; season: string | null } {
   try {
     const { pathname } = new URL(sourceUrl);
-    const match = pathname.match(/\/season\/([^/]+)\/(\d+)/i);
-    if (match) {
-      const title = match[1].replace(/-/g, ' ');
-      return { title, season: match[2] };
+    const demoMatch = pathname.match(/\/season\/([^/]+)\/(\d+)/i);
+    if (demoMatch) {
+      return { title: humanizeSlug(demoMatch[1]), season: demoMatch[2] };
+    }
+    const catalogueMatch = pathname.match(/\/catalogue\/([^/]+)\/saison(\d+)/i);
+    if (catalogueMatch) {
+      return { title: humanizeSlug(catalogueMatch[1]), season: catalogueMatch[2] };
     }
   } catch {
     // fall through

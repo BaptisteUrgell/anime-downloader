@@ -153,7 +153,7 @@ export function LibraryPanel() {
                     onClick={() => toggleSeries(series.id)}
                   >
                     <span
-                      className="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-md bg-ad-tile text-sm font-semibold text-primary-foreground"
                       aria-hidden
                     >
                       {titleInitials(series.title)}
