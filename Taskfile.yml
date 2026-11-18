@@ -1,0 +1,142 @@
+version: "3"
+
+vars:
+  DATA_DIR: '{{.DATA_DIR | default "/data"}}'
+  BACKEND_DIR: backend
+  FRONTEND_DIR: frontend
+  COMPOSE: docker compose
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # ── Docker ──────────────────────────────────────────────
+  docker:up:
+    desc: Start Docker stack (build if needed) in the background
+    cmds:
+      - "{{.COMPOSE}} up -d --build"
+
+  docker:update:
+    desc: Rebuild and recreate images (pull + build + up)
+    cmds:
+      - "{{.COMPOSE}} pull || true"
+      - "{{.COMPOSE}} up -d --build --force-recreate --remove-orphans"
+
+  docker:down:
+    desc: Stop and remove Docker containers
+    cmds:
+      - "{{.COMPOSE}} down"
+
+  docker:logs:
+    desc: Follow Docker logs
+    cmds:
+      - "{{.COMPOSE}} logs -f"
+
+  docker:ps:
+    desc: Show Docker service status
+    cmds:
+      - "{{.COMPOSE}} ps"
+
+  # ── Alembic ─────────────────────────────────────────────
+  db:migrate:
+    desc: Apply Alembic migrations (upgrade head)
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - |
+        if [ -n "${DATABASE_URL:-}" ]; then
+          uv run alembic -x sqlalchemy.url="$DATABASE_URL" upgrade head
+        elif [ -n "${DATA_DIR:-}" ]; then
+          uv run alembic -x sqlalchemy.url="sqlite:///${DATA_DIR}/app.db" upgrade head
+        else
+          uv run alembic upgrade head
+        fi
+
+  db:revision:
+    desc: Create a new Alembic revision (autogenerate)
+    dir: "{{.BACKEND_DIR}}"
+    requires:
+      vars: [MESSAGE]
+    cmds:
+      - uv run alembic revision --autogenerate -m "{{.MESSAGE}}"
+
+  db:current:
+    desc: Show current Alembic revision
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run alembic current
+
+  db:history:
+    desc: Show Alembic migration history
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run alembic history --verbose
+
+  # ── Packages ────────────────────────────────────────────
+  deps:backend:
+    desc: Upgrade backend Python packages (uv lock --upgrade + sync)
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv lock --upgrade
+      - uv sync
+
+  deps:frontend:
+    desc: Upgrade frontend npm packages
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm update
+      - npm outdated || true
+
+  deps:update:
+    desc: Upgrade backend + frontend packages
+    cmds:
+      - task deps:backend
+      - task deps:frontend
+
+  # ── API client (Hey API) ────────────────────────────────
+  api:export:
+    desc: Export OpenAPI from FastAPI to frontend/openapi.json
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - |
+        uv run python -c "
+        import json
+        from pathlib import Path
+        from anime_downloader.api.main import create_app
+        spec = create_app('/tmp/ad-openapi-export').openapi()
+        out = Path('../frontend/openapi.json')
+        out.write_text(json.dumps(spec, indent=2) + '\n', encoding='utf-8')
+        print(f'wrote {out.resolve()}')
+        "
+
+  api:generate:
+    desc: Regenerate TypeScript client with Hey API
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run openapi-ts
+
+  api:sync:
+    desc: Export OpenAPI + generate Hey API client
+    cmds:
+      - task api:export
+      - task api:generate
+
+  # ── Local dev ───────────────────────────────────────────
+  backend:dev:
+    desc: Run backend locally (uvicorn reload)
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - DATA_DIR="${DATA_DIR:-../data}" uv run uvicorn anime_downloader.api.main:app --reload --host 0.0.0.0 --port 8000
+
+  frontend:dev:
+    desc: Run frontend Vite dev server
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run dev
+
+  test:backend:
+    desc: Run backend tests
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - uv run pytest -v

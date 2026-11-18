@@ -1,0 +1,64 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Data (SQLite + downloads)
+/data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.uv/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/src/api/client/
+*.tsbuildinfo
+.npm/
+.vite/
+
+# OpenAPI source of truth (committed); Hey API client is regenerated via `task api:generate`
+
+# Logs / temp
+*.log
+tmp/
+temp/
+.cache/
+
+# Docker
+docker-compose.override.yml
+
+# Local agent / scratch (not part of the product)
+.agents/
+_bmad/
+_bmad-output/
+.superpowers/

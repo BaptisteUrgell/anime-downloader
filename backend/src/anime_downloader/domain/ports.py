@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Protocol
+
+from anime_downloader.domain.model import (
+    DownloadJob,
+    Episode,
+    EpisodeRef,
+    MediaLocator,
+    Season,
+    SeasonDiscovery,
+    Series,
+    SourceUrl,
+)
+
+# Report download completion from 0.0 to 100.0.
+ProgressCallback = Callable[[float], None]
+
+
+class SourceAdapter(Protocol):
+    @property
+    def adapter_id(self) -> str: ...
+
+    def matches(self, url: SourceUrl) -> bool: ...
+
+    def discover_season(self, url: SourceUrl) -> SeasonDiscovery: ...
+
+    def resolve_media(self, episode: EpisodeRef) -> MediaLocator: ...
+
+    def next_episode(self, episode: EpisodeRef) -> EpisodeRef | None: ...
+
+
+class AdapterRegistry(Protocol):
+    def resolve(self, url: SourceUrl) -> SourceAdapter: ...
+
+
+class MediaDownloader(Protocol):
+    def download(
+        self,
+        media: MediaLocator,
+        destination: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> str: ...
+
+
+class LibraryRepository(Protocol):
+    def upsert_series(self, series: Series) -> Series: ...
+    def upsert_season(self, season: Season) -> Season: ...
+    def upsert_episode(self, episode: Episode) -> Episode: ...
+    def list_series(self) -> list[Series]: ...
+    def list_seasons(self, series_id: str) -> list[Season]: ...
+    def list_episodes(self, season_id: str) -> list[Episode]: ...
+    def get_episode(self, episode_id: str) -> Episode | None: ...
+    def list_failed_episodes(self, season_id: str) -> list[Episode]: ...
+
+
+class JobRepository(Protocol):
+    def save(self, job: DownloadJob) -> DownloadJob: ...
+    def get(self, job_id: str) -> DownloadJob | None: ...
+    def list_jobs(self) -> list[DownloadJob]: ...
+    def list_resumable(self) -> list[DownloadJob]: ...
+
+
+class Clock(Protocol):
+    def now_iso(self) -> str: ...
+
+
+class IdGenerator(Protocol):
+    def new_id(self) -> str: ...
