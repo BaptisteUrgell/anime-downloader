@@ -143,6 +143,18 @@ class SqlAlchemyLibraryRepository:
                 session.delete(row)
                 session.commit()
 
+    def delete_season(self, season_id: str) -> None:
+        with self._session_factory() as session:
+            episodes = session.scalars(
+                select(EpisodeRow).where(EpisodeRow.season_id == season_id)
+            ).all()
+            for episode in episodes:
+                session.delete(episode)
+            row = session.get(SeasonRow, season_id)
+            if row is not None:
+                session.delete(row)
+            session.commit()
+
     def reassign_season(self, season_id: str, new_series_id: str) -> None:
         with self._session_factory() as session:
             row = session.get(SeasonRow, season_id)

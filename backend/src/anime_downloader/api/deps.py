@@ -79,6 +79,7 @@ class DefaultMediaDownloader:
 @dataclass
 class AppContainer:
     data_dir: Path
+    library_root: Path
     engine: Engine
     jobs: JobRepository
     library: LibraryRepository
@@ -122,6 +123,7 @@ def build_container(
     )
     return AppContainer(
         data_dir=data_dir,
+        library_root=library_root,
         engine=engine,
         jobs=jobs,
         library=library,

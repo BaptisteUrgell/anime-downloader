@@ -338,7 +338,14 @@ def test_lifespan_resumes_incomplete_jobs_and_stops_worker_on_shutdown(
         assert worker._thread is not None and worker._thread.is_alive()
 
     assert not worker._thread.is_alive()
-    assert ep1_path.read_bytes() == b"kept-from-before-crash"
+    migrated_ep1 = (
+        library_root
+        / "resume-show (2020)"
+        / "Season 01"
+        / "resume-show S01E01.mp4"
+    ).resolve()
+    assert migrated_ep1.read_bytes() == b"kept-from-before-crash"
+    assert not ep1_path.exists()
     assert exported_app is not None
 
 
