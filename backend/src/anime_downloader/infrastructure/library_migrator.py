@@ -8,6 +8,7 @@ from anime_downloader.domain.errors import InvalidSourceUrl, NoAdapterFound
 from anime_downloader.domain.model import (
     Episode,
     EpisodeStatus,
+    Season,
     SeasonDiscovery,
     Series,
     SourceUrl,
@@ -84,7 +85,7 @@ def migrate_library(
         if identity is None:
             continue
         try:
-            if _merge_series_if_needed(library, series, identity):
+            if _merge_series_if_needed(library, series, identity, errors):
                 merged_series += 1
         except Exception as exc:
             _record(errors, f"Failed to update series {series.id}: {exc}")
@@ -188,6 +189,7 @@ def _merge_series_if_needed(
     library: LibraryRepository,
     series: Series,
     discovery: SeasonDiscovery,
+    errors: list[str],
 ) -> bool:
     canonical = _canonical_series(library, series.id, discovery)
     if canonical is None:
@@ -212,29 +214,105 @@ def _merge_series_if_needed(
         if target is None:
             library.reassign_season(season.id, canonical.id)
             continue
-        occupied = {episode.number for episode in library.list_episodes(target.id)}
-        for episode in library.list_episodes(season.id):
-            if episode.number in occupied:
-                continue
-            library.upsert_episode(
-                Episode(
-                    id=episode.id,
-                    season_id=target.id,
-                    number=episode.number,
-                    title=episode.title,
-                    status=episode.status,
-                    source_url=episode.source_url,
-                    file_path=episode.file_path,
-                    error_message=episode.error_message,
-                )
-            )
-            occupied.add(episode.number)
-        library.delete_season(season.id)
+        if _fold_episodes_into_season(library, series, season, target, errors):
+            library.delete_season(season.id)
 
     if library.list_seasons(series.id):
         return False
     library.delete_series(series.id)
     return True
+
+
+def _fold_episodes_into_season(
+    library: LibraryRepository,
+    series: Series,
+    season: Season,
+    target: Season,
+    errors: list[str],
+) -> bool:
+    occupants = {
+        episode.number: episode for episode in library.list_episodes(target.id)
+    }
+    can_delete = True
+    for episode in library.list_episodes(season.id):
+        occupant = occupants.get(episode.number)
+        if occupant is None:
+            moved = _episode_on_season(episode, target.id)
+            library.upsert_episode(moved)
+            occupants[episode.number] = moved
+            continue
+        if _different_existing_files(episode, occupant):
+            _record(
+                errors,
+                (
+                    f"Not merging series {series.id} season {season.number} "
+                    f"episode {episode.number}: {episode.file_path} and "
+                    f"{occupant.file_path} are different files"
+                ),
+            )
+            can_delete = False
+            continue
+        if _should_adopt_incoming_file(episode, occupant):
+            library.upsert_episode(
+                Episode(
+                    id=occupant.id,
+                    season_id=occupant.season_id,
+                    number=occupant.number,
+                    title=occupant.title,
+                    status=EpisodeStatus.COMPLETED,
+                    source_url=occupant.source_url,
+                    file_path=episode.file_path,
+                    error_message=None,
+                )
+            )
+    return can_delete
+
+
+def _episode_on_season(episode: Episode, season_id: str) -> Episode:
+    return Episode(
+        id=episode.id,
+        season_id=season_id,
+        number=episode.number,
+        title=episode.title,
+        status=episode.status,
+        source_url=episode.source_url,
+        file_path=episode.file_path,
+        error_message=episode.error_message,
+    )
+
+
+def _should_adopt_incoming_file(incoming: Episode, occupant: Episode) -> bool:
+    return (
+        incoming.status == EpisodeStatus.COMPLETED
+        and bool(incoming.file_path)
+        and not _completed_with_existing_file(occupant)
+    )
+
+
+def _different_existing_files(incoming: Episode, occupant: Episode) -> bool:
+    incoming_file = _existing_file(incoming.file_path)
+    occupant_file = _existing_file(occupant.file_path)
+    return (
+        incoming_file is not None
+        and occupant_file is not None
+        and incoming_file != occupant_file
+    )
+
+
+def _completed_with_existing_file(episode: Episode) -> bool:
+    return (
+        episode.status == EpisodeStatus.COMPLETED
+        and _existing_file(episode.file_path) is not None
+    )
+
+
+def _existing_file(file_path: str | None) -> Path | None:
+    if not file_path:
+        return None
+    path = Path(file_path)
+    if not path.is_file():
+        return None
+    return path.resolve()
 
 
 def _canonical_series(

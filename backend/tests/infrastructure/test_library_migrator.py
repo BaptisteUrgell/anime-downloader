@@ -238,6 +238,113 @@ def test_merge_duplicate_series_same_title_year(tmp_path: Path, session_factory)
         assert session.scalar(select(func.count()).select_from(EpisodeRow)) == 1
 
 
+def test_same_season_merge_keeps_completed_file_when_earlier_row_failed(
+    tmp_path: Path, session_factory
+) -> None:
+    library_root = tmp_path / "library"
+    repo = _repo(session_factory)
+    payload = b"completed-episode-bytes"
+    completed_path = (
+        library_root / "zzz-hells-paradise" / "1" / "S01E01 - zzz-hells-paradise.mp4"
+    )
+    repo.upsert_series(Series(id="s-failed", title="Hell's Paradise", release_year=2023))
+    repo.upsert_season(Season(id="sea-failed", series_id="s-failed", number=1))
+    repo.upsert_episode(
+        Episode(
+            id="ep-failed",
+            season_id="sea-failed",
+            number=1,
+            title="Episode",
+            status=EpisodeStatus.FAILED,
+            source_url="https://stub.local/catalogue/hells-paradise/saison1/vf",
+            error_message="download failed",
+        )
+    )
+    _completed_episode(
+        repo,
+        series_id="s-done",
+        title="zzz-hells-paradise",
+        season_id="sea-done",
+        episode_id="ep-done",
+        number=1,
+        source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+        file_path=completed_path,
+        payload=payload,
+    )
+    assert [series.id for series in repo.list_series()] == ["s-failed", "s-done"]
+    registry = AdapterRegistry([_MetaAdapter()])
+
+    migrate_library(library=repo, registry=registry, library_root=library_root)
+    expected = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mp4")
+    second = migrate_library(library=repo, registry=registry, library_root=library_root)
+
+    assert expected.is_file()
+    assert expected.read_bytes() == payload
+    survivor = repo.get_episode("ep-failed")
+    assert survivor is not None
+    assert survivor.status == EpisodeStatus.COMPLETED
+    assert survivor.error_message is None
+    assert Path(survivor.file_path or "") == expected
+    assert Path(survivor.file_path or "").read_bytes() == payload
+    assert repo.get_episode("ep-done") is None
+    assert second.errors == []
+    assert expected.read_bytes() == payload
+
+
+def test_same_season_merge_keeps_duplicate_when_files_differ(
+    tmp_path: Path, session_factory
+) -> None:
+    library_root = tmp_path / "library"
+    repo = _repo(session_factory)
+    vf_path = library_root / "hells-paradise-vf" / "1" / "S01E01 - hells-paradise-vf.mp4"
+    vostfr_path = (
+        library_root
+        / "hells-paradise-vostfr"
+        / "1"
+        / "S01E01 - hells-paradise-vostfr.mkv"
+    )
+    _completed_episode(
+        repo,
+        series_id="s-vf",
+        title="hells-paradise-vf",
+        season_id="sea-vf",
+        episode_id="ep-vf",
+        number=1,
+        source_url="https://stub.local/catalogue/hells-paradise/saison1/vf",
+        file_path=vf_path,
+        payload=b"vf-bytes",
+    )
+    _completed_episode(
+        repo,
+        series_id="s-vostfr",
+        title="hells-paradise-vostfr",
+        season_id="sea-vostfr",
+        episode_id="ep-vostfr",
+        number=1,
+        source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+        file_path=vostfr_path,
+        payload=b"vostfr-bytes",
+    )
+    registry = AdapterRegistry([_MetaAdapter()])
+
+    report = migrate_library(library=repo, registry=registry, library_root=library_root)
+    mp4_path = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mp4")
+    mkv_path = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mkv")
+    second = migrate_library(library=repo, registry=registry, library_root=library_root)
+
+    assert report.merged_series == 0
+    assert any("different files" in error for error in report.errors)
+    assert any("different files" in error for error in second.errors)
+    assert {series.id for series in repo.list_series()} == {"s-vf", "s-vostfr"}
+    kept_vf = repo.get_episode("ep-vf")
+    kept_vostfr = repo.get_episode("ep-vostfr")
+    assert kept_vf is not None and kept_vostfr is not None
+    assert Path(kept_vf.file_path or "") == mp4_path
+    assert Path(kept_vostfr.file_path or "") == mkv_path
+    assert mp4_path.read_bytes() == b"vf-bytes"
+    assert mkv_path.read_bytes() == b"vostfr-bytes"
+
+
 def test_reassigns_distinct_season_onto_canonical_series(
     tmp_path: Path, session_factory
 ) -> None:
