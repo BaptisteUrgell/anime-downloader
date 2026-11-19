@@ -13,8 +13,11 @@
 - In-memory season cache with rediscovery on miss
 - **One URL = one season** (no automatic next-season chaining)
 - Never re-download `completed` episodes
-- Filenames: `S{ss}E{ee} - {title|series}.{ext}` under `library/{series}/{season}/`
-- `series_title = {slug}-{lang}` (e.g. `dreamland-vostfr`) to avoid VOSTFR/VF collisions
+- Filenames and on-disk layout: see [2026-11-19-jellyfin-library-naming-design.md](./2026-11-19-jellyfin-library-naming-design.md) (supersedes the original slug-lang paths below)
+
+## Superseded path naming (pre–Jellyfin layout)
+
+The first implementation used `library/{slug}-{lang}/{season}/` with filenames `S{ss}E{ee} - {title|series}.{ext}` and `series_title = {slug}-{lang}` (e.g. `dreamland-vostfr`) to keep VOSTFR/VF in separate folders. That layout is obsolete; discovery now uses the display title and release year from the oeuvre page, and a shared path builder applies the Jellyfin TV layout to all adapters.
 
 ## Architecture
 
