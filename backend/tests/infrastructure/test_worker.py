@@ -153,7 +153,7 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
     sleeps: list[float] = []
 
     job = start_season_download(
-        url="https://fake.local/season/demo-show/1",
+        url="https://fake.local/season/fake-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -192,9 +192,9 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
     for n, ep in enumerate(episodes, start=1):
         expected_path = (
             library_root
-            / "demo-show (2020)"
+            / "fake-show (2020)"
             / "Season 01"
-            / f"demo-show S01E{n:02d}.mp4"
+            / f"fake-show S01E{n:02d}.mp4"
         ).resolve()
         assert ep.status == EpisodeStatus.COMPLETED
         assert ep.error_message is None
@@ -249,8 +249,8 @@ def test_worker_second_download_overwrites_jellyfin_file(env) -> None:
     jobs, library, library_root = env
     registry = AdapterRegistry([FakeSeasonAdapter(episode_count=1)])
     ids = UuidIdGenerator()
-    url = "https://fake.local/season/demo-show/1"
-    expected = build_episode_path(library_root, "demo-show", 2020, 1, 1, "mp4")
+    url = "https://fake.local/season/fake-show/1"
+    expected = build_episode_path(library_root, "fake-show", 2020, 1, 1, "mp4")
 
     def run_download(payload: bytes, job_id: str) -> None:
         worker = DownloadWorker(
@@ -765,12 +765,12 @@ def test_worker_skips_already_completed_episodes(env) -> None:
     ids = UuidIdGenerator()
     registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
 
-    series = library.upsert_series(Series(id=ids.new_id(), title="demo-show"))
+    series = library.upsert_series(Series(id=ids.new_id(), title="fake-show"))
     season = library.upsert_season(
         Season(id=ids.new_id(), series_id=series.id, number=1)
     )
     for n in (1, 2):
-        path = library_root / "demo-show" / "1" / f"S01E{n:02d} - Episode {n}.mp4"
+        path = library_root / "fake-show" / "1" / f"S01E{n:02d} - Episode {n}.mp4"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"already-there")
         library.upsert_episode(
@@ -780,7 +780,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
                 number=n,
                 title=f"Episode {n}",
                 status=EpisodeStatus.COMPLETED,
-                source_url=f"https://fake.local/season/demo-show/1/e/{n}",
+                source_url=f"https://fake.local/season/fake-show/1/e/{n}",
                 file_path=str(path.resolve()),
                 error_message=None,
             )
@@ -803,7 +803,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
         ids=ids,
     )
     job = start_season_download(
-        url="https://fake.local/season/demo-show/1",
+        url="https://fake.local/season/fake-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -836,7 +836,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
     assert refreshed is not None
     assert refreshed.status == JobStatus.COMPLETED
     assert (
-        library_root / "demo-show" / "1" / "S01E01 - Episode 1.mp4"
+        library_root / "fake-show" / "1" / "S01E01 - Episode 1.mp4"
     ).read_bytes() == b"already-there"
 
 

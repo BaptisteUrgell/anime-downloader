@@ -614,18 +614,18 @@ def test_discovery_failure_is_cached_for_the_same_url(
 def test_skips_unknown_host_and_leaves_file(tmp_path: Path, session_factory, caplog) -> None:
     library_root = tmp_path / "library"
     repo = _repo(session_factory)
-    old_path = library_root / "demo-show" / "1" / "S01E01 - demo-show.mp4"
-    source_url = "https://demo.local/watch/1"
+    old_path = library_root / "orphan-show" / "1" / "S01E01 - orphan-show.mp4"
+    source_url = "https://unknown.local/watch/1"
     _completed_episode(
         repo,
-        series_id="s-demo",
-        title="demo-show",
-        season_id="sea-demo",
-        episode_id="ep-demo",
+        series_id="s-orphan",
+        title="orphan-show",
+        season_id="sea-orphan",
+        episode_id="ep-orphan",
         number=1,
         source_url=source_url,
         file_path=old_path,
-        payload=b"demo-bytes",
+        payload=b"orphan-bytes",
     )
 
     with caplog.at_level("WARNING"):
@@ -635,9 +635,9 @@ def test_skips_unknown_host_and_leaves_file(tmp_path: Path, session_factory, cap
             library_root=library_root,
         )
 
-    assert old_path.read_bytes() == b"demo-bytes"
-    assert repo.list_series() == [Series(id="s-demo", title="demo-show", release_year=None)]
+    assert old_path.read_bytes() == b"orphan-bytes"
+    assert repo.list_series() == [Series(id="s-orphan", title="orphan-show", release_year=None)]
     assert report.renamed_files == 0
     assert report.merged_series == 0
-    assert any("demo.local" in error for error in report.errors)
-    assert any("demo.local" in record.message for record in caplog.records)
+    assert any("unknown.local" in error for error in report.errors)
+    assert any("unknown.local" in record.message for record in caplog.records)
