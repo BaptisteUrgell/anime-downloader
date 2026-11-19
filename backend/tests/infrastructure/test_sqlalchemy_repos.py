@@ -211,6 +211,75 @@ def test_library_repository_deduplicates_natural_keys_on_re_discovery(
     assert len(repo.list_episodes(first_season.id)) == 1
 
 
+def test_series_persists_release_year(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    saved = repo.upsert_series(
+        Series(id="s1", title="Hell's Paradise", release_year=2023)
+    )
+    assert saved.release_year == 2023
+    listed = repo.list_series()
+    assert listed[0].release_year == 2023
+
+
+def test_two_years_are_distinct_series(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    repo.upsert_series(Series(id="s1", title="Show", release_year=2020))
+    repo.upsert_series(Series(id="s2", title="Show", release_year=2021))
+    assert {s.id for s in repo.list_series()} == {"s1", "s2"}
+
+
+def test_upsert_series_matches_on_title_and_year(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    a = repo.upsert_series(Series(id="s1", title="Hell's Paradise", release_year=2023))
+    b = repo.upsert_series(Series(id="s2", title="Hell's Paradise", release_year=2023))
+    assert a.id == b.id == "s1"
+    assert len(repo.list_series()) == 1
+
+
+def test_null_release_years_match_same_series(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    a = repo.upsert_series(Series(id="s1", title="Show", release_year=None))
+    b = repo.upsert_series(Series(id="s2", title="Show", release_year=None))
+    assert a.id == b.id == "s1"
+    assert len(repo.list_series()) == 1
+
+
+def test_null_year_does_not_match_known_year(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    repo.upsert_series(Series(id="s1", title="Show", release_year=None))
+    repo.upsert_series(Series(id="s2", title="Show", release_year=2023))
+    assert {s.id for s in repo.list_series()} == {"s1", "s2"}
+
+
+def test_upsert_series_by_id_updates_release_year(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    repo.upsert_series(Series(id="s1", title="Show", release_year=2020))
+    updated = repo.upsert_series(Series(id="s1", title="Show Renamed", release_year=2021))
+    assert updated == Series(id="s1", title="Show Renamed", release_year=2021)
+    assert repo.list_series() == [
+        Series(id="s1", title="Show Renamed", release_year=2021)
+    ]
+
+
+def test_delete_series_removes_series(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    repo.upsert_series(Series(id="s1", title="Show", release_year=2020))
+    repo.delete_series("s1")
+    assert repo.list_series() == []
+    repo.delete_series("missing")
+
+
+def test_reassign_season_moves_season_to_new_series(session_factory) -> None:
+    repo = SqlAlchemyLibraryRepository(session_factory)
+    repo.upsert_series(Series(id="s1", title="Alpha"))
+    repo.upsert_series(Series(id="s2", title="Beta"))
+    repo.upsert_season(Season(id="sea-1", series_id="s1", number=1))
+    repo.reassign_season("sea-1", "s2")
+    assert repo.list_seasons("s1") == []
+    assert repo.list_seasons("s2") == [Season(id="sea-1", series_id="s2", number=1)]
+    repo.reassign_season("missing", "s2")
+
+
 def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> None:
     repo = SqlAlchemyJobRepository(session_factory)
 
