@@ -91,10 +91,6 @@ function humanizeSlug(slug: string): string {
 function parseJobSeasonLabel(sourceUrl: string): { title: string; season: string | null } {
   try {
     const { pathname } = new URL(sourceUrl);
-    const demoMatch = pathname.match(/\/season\/([^/]+)\/(\d+)/i);
-    if (demoMatch) {
-      return { title: humanizeSlug(demoMatch[1]), season: demoMatch[2] };
-    }
     const catalogueMatch = pathname.match(/\/catalogue\/([^/]+)\/saison(\d+)/i);
     if (catalogueMatch) {
       return { title: humanizeSlug(catalogueMatch[1]), season: catalogueMatch[2] };

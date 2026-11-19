@@ -57,12 +57,12 @@ def test_preview_season_returns_fake_episode_count_and_metadata(tmp_path: Path) 
     with TestClient(app) as client:
         resp = client.post(
             "/api/jobs/preview",
-            json={"url": "https://fake.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/fake-show/1"},
         )
 
     assert resp.status_code == 200
     assert resp.json() == {
-        "series_title": "demo-show",
+        "series_title": "fake-show",
         "season_number": 1,
         "episode_count": 3,
         "episodes": [
@@ -118,7 +118,7 @@ def test_create_job_returns_pending_or_running_and_completes_library(
 
         create_resp = client.post(
             "/api/jobs",
-            json={"url": "https://fake.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/fake-show/1"},
         )
         assert create_resp.status_code in {200, 201}
         created_job = create_resp.json()
@@ -151,7 +151,7 @@ def test_create_job_returns_pending_or_running_and_completes_library(
         assert lib_resp.status_code == 200
         lib_data = lib_resp.json()
         assert len(lib_data) == 1
-        assert lib_data[0]["title"] == "demo-show"
+        assert lib_data[0]["title"] == "fake-show"
         assert len(lib_data[0]["seasons"]) == 1
         season_node = lib_data[0]["seasons"][0]
         assert season_node["number"] == 1
@@ -170,7 +170,7 @@ def test_create_app_downloads_fake_season_into_jellyfin_path(
     with TestClient(app) as client:
         resp = client.post(
             "/api/jobs",
-            json={"url": "https://fake.local/season/solo-demo/1"},
+            json={"url": "https://fake.local/season/solo-show/1"},
         )
         assert resp.status_code in {200, 201}
         job_id = resp.json()["id"]
@@ -186,9 +186,9 @@ def test_create_app_downloads_fake_season_into_jellyfin_path(
     expected_ep1 = (
         tmp_path
         / "library"
-        / "solo-demo (2020)"
+        / "solo-show (2020)"
         / "Season 01"
-        / "solo-demo S01E01.mp4"
+        / "solo-show S01E01.mp4"
     )
     assert expected_ep1.is_file()
 
@@ -354,7 +354,7 @@ def test_dismiss_job_and_dismiss_completed(tmp_path: Path) -> None:
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://fake.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/fake-show/1"},
         )
         assert created.status_code == 201
         job_id = created.json()["id"]
@@ -388,7 +388,7 @@ def test_dismiss_active_job_conflict(tmp_path: Path) -> None:
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://fake.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/fake-show/1"},
         )
         job_id = created.json()["id"]
         _poll_until(
@@ -404,7 +404,7 @@ def test_dismiss_completed_endpoint_counts(tmp_path: Path) -> None:
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://fake.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/fake-show/1"},
         )
         job_id = created.json()["id"]
         _poll_until(

@@ -1,6 +1,7 @@
 [project]
 name = "anime-downloader"
 version = "0.1.0"
+description = "Download anime seasons from supported URLs into a local Jellyfin-friendly library (Docker or native)."
 requires-python = ">=3.15"
 dependencies = [
   "fastapi>=0.120",

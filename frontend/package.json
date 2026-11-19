@@ -2,6 +2,7 @@
   "name": "anime-downloader-frontend",
   "private": true,
   "version": "0.0.0",
+  "description": "Web UI for the anime-downloader local season download app.",
   "type": "module",
   "scripts": {
     "dev": "vite",

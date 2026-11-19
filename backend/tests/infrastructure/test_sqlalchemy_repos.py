@@ -286,7 +286,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     pending_job = DownloadJob(
         id="job-pending",
         source_url="https://fake.local/season/show-a/1",
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.PENDING,
         series_id="ser-1",
         season_id="sea-1",
@@ -295,7 +295,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     running_job = DownloadJob(
         id="job-running",
         source_url="https://fake.local/season/show-b/1",
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.RUNNING,
         total_episodes=3,
         completed_episodes=1,
@@ -303,7 +303,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     completed_job = DownloadJob(
         id="job-completed",
         source_url="https://fake.local/season/show-c/1",
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.COMPLETED,
         total_episodes=3,
         completed_episodes=3,
@@ -311,7 +311,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     failed_job = DownloadJob(
         id="job-failed",
         source_url="https://fake.local/season/show-d/1",
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.FAILED,
         error_message="adapter failed",
     )
@@ -332,7 +332,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     updated = DownloadJob(
         id="job-pending",
         source_url=pending_job.source_url,
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.COMPLETED,
         series_id="ser-1",
         season_id="sea-1",
@@ -350,7 +350,7 @@ def test_job_repository_persists_dismissed_at(session_factory) -> None:
     job = DownloadJob(
         id="job-dismissed",
         source_url="https://fake.local/season/show/1",
-        adapter_id="demo",
+        adapter_id="fake",
         status=JobStatus.COMPLETED,
         total_episodes=1,
         completed_episodes=1,
@@ -366,7 +366,7 @@ def test_fake_media_downloader_writes_minimal_bytes_and_creates_parents(
     tmp_path: Path,
 ) -> None:
     downloader = FakeMediaDownloader()
-    dest = tmp_path / "library" / "demo-show" / "1" / "E01.mp4"
+    dest = tmp_path / "library" / "fake-show" / "1" / "E01.mp4"
     locator = MediaLocator(url="https://fake.local/media/1.mp4", suggested_filename="E01.mp4")
 
     written_path = downloader.download(locator, str(dest))
