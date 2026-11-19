@@ -91,7 +91,7 @@ def test_library_repository_upserts_and_lists_hierarchy(session_factory) -> None
             number=2,
             title="Episode Two",
             status=EpisodeStatus.PENDING,
-            source_url="https://demo.local/season/frieren/1/e/2",
+            source_url="https://fake.local/season/frieren/1/e/2",
         )
     )
     ep_1 = repo.upsert_episode(
@@ -101,7 +101,7 @@ def test_library_repository_upserts_and_lists_hierarchy(session_factory) -> None
             number=1,
             title="Episode One",
             status=EpisodeStatus.PENDING,
-            source_url="https://demo.local/season/frieren/1/e/1",
+            source_url="https://fake.local/season/frieren/1/e/1",
         )
     )
 
@@ -123,7 +123,7 @@ def test_library_repository_updates_episode_and_lists_failed(session_factory) ->
             number=1,
             title="Ep 1",
             status=EpisodeStatus.PENDING,
-            source_url="https://demo.local/season/orb/1/e/1",
+            source_url="https://fake.local/season/orb/1/e/1",
         )
     )
     repo.upsert_episode(
@@ -133,7 +133,7 @@ def test_library_repository_updates_episode_and_lists_failed(session_factory) ->
             number=2,
             title="Ep 2",
             status=EpisodeStatus.PENDING,
-            source_url="https://demo.local/season/orb/1/e/2",
+            source_url="https://fake.local/season/orb/1/e/2",
         )
     )
 
@@ -144,7 +144,7 @@ def test_library_repository_updates_episode_and_lists_failed(session_factory) ->
             number=1,
             title="Ep 1",
             status=EpisodeStatus.COMPLETED,
-            source_url="https://demo.local/season/orb/1/e/1",
+            source_url="https://fake.local/season/orb/1/e/1",
             file_path="/data/library/Orb/1/E01 - Ep 1.mp4",
         )
     )
@@ -155,7 +155,7 @@ def test_library_repository_updates_episode_and_lists_failed(session_factory) ->
             number=2,
             title="Ep 2",
             status=EpisodeStatus.FAILED,
-            source_url="https://demo.local/season/orb/1/e/2",
+            source_url="https://fake.local/season/orb/1/e/2",
             error_message="network timeout",
         )
     )
@@ -191,7 +191,7 @@ def test_library_repository_deduplicates_natural_keys_on_re_discovery(
             number=1,
             title="Hot Pot",
             status=EpisodeStatus.PENDING,
-            source_url="https://demo.local/season/meshi/1/e/1",
+            source_url="https://fake.local/season/meshi/1/e/1",
         )
     )
     second_ep = repo.upsert_episode(
@@ -201,7 +201,7 @@ def test_library_repository_deduplicates_natural_keys_on_re_discovery(
             number=1,
             title="Hot Pot Updated",
             status=EpisodeStatus.COMPLETED,
-            source_url="https://demo.local/season/meshi/1/e/1",
+            source_url="https://fake.local/season/meshi/1/e/1",
             file_path="/data/library/Dungeon Meshi/1/E01.mp4",
         )
     )
@@ -285,7 +285,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
 
     pending_job = DownloadJob(
         id="job-pending",
-        source_url="https://demo.local/season/show-a/1",
+        source_url="https://fake.local/season/show-a/1",
         adapter_id="demo",
         status=JobStatus.PENDING,
         series_id="ser-1",
@@ -294,7 +294,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     )
     running_job = DownloadJob(
         id="job-running",
-        source_url="https://demo.local/season/show-b/1",
+        source_url="https://fake.local/season/show-b/1",
         adapter_id="demo",
         status=JobStatus.RUNNING,
         total_episodes=3,
@@ -302,7 +302,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     )
     completed_job = DownloadJob(
         id="job-completed",
-        source_url="https://demo.local/season/show-c/1",
+        source_url="https://fake.local/season/show-c/1",
         adapter_id="demo",
         status=JobStatus.COMPLETED,
         total_episodes=3,
@@ -310,7 +310,7 @@ def test_job_repository_saves_updates_and_filters_resumable(session_factory) -> 
     )
     failed_job = DownloadJob(
         id="job-failed",
-        source_url="https://demo.local/season/show-d/1",
+        source_url="https://fake.local/season/show-d/1",
         adapter_id="demo",
         status=JobStatus.FAILED,
         error_message="adapter failed",
@@ -349,7 +349,7 @@ def test_job_repository_persists_dismissed_at(session_factory) -> None:
     repo = SqlAlchemyJobRepository(session_factory)
     job = DownloadJob(
         id="job-dismissed",
-        source_url="https://demo.local/season/show/1",
+        source_url="https://fake.local/season/show/1",
         adapter_id="demo",
         status=JobStatus.COMPLETED,
         total_episodes=1,
@@ -367,7 +367,7 @@ def test_fake_media_downloader_writes_minimal_bytes_and_creates_parents(
 ) -> None:
     downloader = FakeMediaDownloader()
     dest = tmp_path / "library" / "demo-show" / "1" / "E01.mp4"
-    locator = MediaLocator(url="https://demo.local/media/1.mp4", suggested_filename="E01.mp4")
+    locator = MediaLocator(url="https://fake.local/media/1.mp4", suggested_filename="E01.mp4")
 
     written_path = downloader.download(locator, str(dest))
 

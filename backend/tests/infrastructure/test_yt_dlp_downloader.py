@@ -6,7 +6,6 @@ import pytest
 
 from anime_downloader.api.deps import DefaultMediaDownloader, _is_hls_or_dash_url
 from anime_downloader.domain.model import MediaLocator
-from anime_downloader.infrastructure.http_downloader import FakeMediaDownloader
 from anime_downloader.infrastructure.yt_dlp_downloader import YtDlpMediaDownloader
 
 
@@ -33,7 +32,6 @@ def test_default_downloader_routes_hls_to_ytdlp(tmp_path: Path) -> None:
 
     downloader = DefaultMediaDownloader(
         http_downloader=BoomHttp(),  # type: ignore[arg-type]
-        demo_downloader=FakeMediaDownloader(),
         ytdlp_downloader=RecordingYtDlp(),  # type: ignore[arg-type]
     )
     dest = tmp_path / "lib" / "show" / "1" / "S01E01 - show.m3u8"

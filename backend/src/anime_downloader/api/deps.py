@@ -25,11 +25,7 @@ from anime_downloader.infrastructure.db.session import (
     make_session_factory,
 )
 from anime_downloader.infrastructure.anime_sama import AnimeSamaAdapter
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
-from anime_downloader.infrastructure.http_downloader import (
-    FakeMediaDownloader,
-    HttpMediaDownloader,
-)
+from anime_downloader.infrastructure.http_downloader import HttpMediaDownloader
 from anime_downloader.infrastructure.ids import UuidIdGenerator
 from anime_downloader.infrastructure.persistence.job_repository import (
     SqlAlchemyJobRepository,
@@ -57,14 +53,10 @@ class DefaultMediaDownloader:
     def __init__(
         self,
         http_downloader: HttpMediaDownloader | None = None,
-        demo_downloader: FakeMediaDownloader | None = None,
         ytdlp_downloader: YtDlpMediaDownloader | None = None,
     ) -> None:
         self._http = (
             http_downloader if http_downloader is not None else HttpMediaDownloader()
-        )
-        self._demo = (
-            demo_downloader if demo_downloader is not None else FakeMediaDownloader()
         )
         self._ytdlp = (
             ytdlp_downloader if ytdlp_downloader is not None else YtDlpMediaDownloader()
@@ -77,11 +69,6 @@ class DefaultMediaDownloader:
         *,
         on_progress: ProgressCallback | None = None,
     ) -> str:
-        host = (urlparse(media.url).hostname or "").lower()
-        if host == "demo.local":
-            return self._demo.download(
-                media, destination, on_progress=on_progress
-            )
         if _is_hls_or_dash_url(media.url):
             return self._ytdlp.download(
                 media, destination, on_progress=on_progress
@@ -103,7 +90,7 @@ class AppContainer:
 
 
 def build_default_registry() -> AdapterRegistryPort:
-    return AdapterRegistry([DemoAdapter(), AnimeSamaAdapter()])
+    return AdapterRegistry([AnimeSamaAdapter()])
 
 
 def build_container(

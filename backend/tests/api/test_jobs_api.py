@@ -24,7 +24,7 @@ from anime_downloader.infrastructure.db.session import (
     make_session_factory,
     run_migrations,
 )
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
+from tests.support.fake_season_adapter import FakeSeasonAdapter
 from anime_downloader.infrastructure.http_downloader import FakeMediaDownloader
 from anime_downloader.infrastructure.ids import UuidIdGenerator
 from anime_downloader.infrastructure.persistence.job_repository import (
@@ -33,6 +33,12 @@ from anime_downloader.infrastructure.persistence.job_repository import (
 from anime_downloader.infrastructure.persistence.library_repository import (
     SqlAlchemyLibraryRepository,
 )
+
+
+def _app_with_fake_season(data_dir: str | Path | None = None, **kwargs):
+    kwargs.setdefault("registry", AdapterRegistry([FakeSeasonAdapter()]))
+    kwargs.setdefault("downloader", FakeMediaDownloader())
+    return create_app(data_dir, **kwargs)
 
 
 def _poll_until(predicate, timeout: float = 5.0, interval: float = 0.02):
@@ -46,12 +52,12 @@ def _poll_until(predicate, timeout: float = 5.0, interval: float = 0.02):
     raise AssertionError(f"Condition not met within {timeout}s; last={last_value!r}")
 
 
-def test_preview_season_returns_demo_episode_count_and_metadata(tmp_path: Path) -> None:
-    app = create_app(tmp_path)
+def test_preview_season_returns_fake_episode_count_and_metadata(tmp_path: Path) -> None:
+    app = _app_with_fake_season(tmp_path)
     with TestClient(app) as client:
         resp = client.post(
             "/api/jobs/preview",
-            json={"url": "https://demo.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/demo-show/1"},
         )
 
     assert resp.status_code == 200
@@ -68,7 +74,7 @@ def test_preview_season_returns_demo_episode_count_and_metadata(tmp_path: Path) 
 
 
 def test_preview_season_maps_domain_errors_to_http_statuses(tmp_path: Path) -> None:
-    app = create_app(tmp_path)
+    app = _app_with_fake_season(tmp_path)
     with TestClient(app) as client:
         invalid_resp = client.post("/api/jobs/preview", json={"url": "not-a-url"})
         unknown_resp = client.post(
@@ -77,7 +83,7 @@ def test_preview_season_maps_domain_errors_to_http_statuses(tmp_path: Path) -> N
         )
         broken_resp = client.post(
             "/api/jobs/preview",
-            json={"url": "https://demo.local/season/missing-season-number"},
+            json={"url": "https://fake.local/season/missing-season-number"},
         )
 
     assert invalid_resp.status_code == 400
@@ -100,7 +106,7 @@ def test_create_job_returns_pending_or_running_and_completes_library(
                 media, destination
             )
 
-    app = create_app(tmp_path, downloader=GatedDownloader())
+    app = _app_with_fake_season(tmp_path, downloader=GatedDownloader())
     with TestClient(app) as client:
         empty_jobs = client.get("/api/jobs")
         assert empty_jobs.status_code == 200
@@ -112,14 +118,14 @@ def test_create_job_returns_pending_or_running_and_completes_library(
 
         create_resp = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/demo-show/1"},
         )
         assert create_resp.status_code in {200, 201}
         created_job = create_resp.json()
         job_id = created_job["id"]
         assert created_job["status"] in {"pending", "running"}
         assert created_job["total_episodes"] == 3
-        assert created_job["adapter_id"] == "demo"
+        assert created_job["adapter_id"] == "fake"
         assert created_job["season_id"] is not None
 
         release_download.set()
@@ -157,14 +163,14 @@ def test_create_job_returns_pending_or_running_and_completes_library(
             assert Path(ep["file_path"]).is_file()
 
 
-def test_default_create_app_downloads_demo_season_without_custom_downloader(
+def test_create_app_downloads_fake_season_into_jellyfin_path(
     tmp_path: Path,
 ) -> None:
-    app = create_app(tmp_path)
+    app = _app_with_fake_season(tmp_path)
     with TestClient(app) as client:
         resp = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/solo-demo/1"},
+            json={"url": "https://fake.local/season/solo-demo/1"},
         )
         assert resp.status_code in {200, 201}
         job_id = resp.json()["id"]
@@ -180,7 +186,7 @@ def test_default_create_app_downloads_demo_season_without_custom_downloader(
     expected_ep1 = (
         tmp_path
         / "library"
-        / "solo-demo (Unknown)"
+        / "solo-demo (2020)"
         / "Season 01"
         / "solo-demo S01E01.mp4"
     )
@@ -198,7 +204,7 @@ def test_retry_failed_endpoint_enqueues_job_and_recovers_failed_episodes(
                 raise ConnectionError("cdn 503")
             return FakeMediaDownloader().download(media, destination)
 
-    app = create_app(
+    app = _app_with_fake_season(
         tmp_path,
         downloader=ToggleDownloader(),
         worker_sleep=lambda _: None,
@@ -212,7 +218,7 @@ def test_retry_failed_endpoint_enqueues_job_and_recovers_failed_episodes(
 
         start_resp = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/retry-api/1"},
+            json={"url": "https://fake.local/season/retry-api/1"},
         )
         assert start_resp.status_code in {200, 201}
         initial_job = start_resp.json()
@@ -264,11 +270,11 @@ def test_lifespan_resumes_incomplete_jobs_and_stops_worker_on_shutdown(
     session_factory = make_session_factory(engine)
     jobs = SqlAlchemyJobRepository(session_factory)
     library = SqlAlchemyLibraryRepository(session_factory)
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
 
     crashed_job = start_season_download(
-        url="https://demo.local/season/resume-show/1",
+        url="https://fake.local/season/resume-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -318,7 +324,9 @@ def test_lifespan_resumes_incomplete_jobs_and_stops_worker_on_shutdown(
     engine.dispose()
 
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    app = create_app()
+    app = _app_with_fake_season(
+        registry=AdapterRegistry([FakeSeasonAdapter(episode_count=3)]),
+    )
     with TestClient(app) as client:
         def _resumed_done():
             body = client.get(f"/api/jobs/{crashed_job.id}").json()
@@ -335,11 +343,11 @@ def test_lifespan_resumes_incomplete_jobs_and_stops_worker_on_shutdown(
 
 
 def test_dismiss_job_and_dismiss_completed(tmp_path: Path) -> None:
-    app = create_app(tmp_path)
+    app = _app_with_fake_season(tmp_path)
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/demo-show/1"},
         )
         assert created.status_code == 201
         job_id = created.json()["id"]
@@ -369,11 +377,11 @@ def test_dismiss_active_job_conflict(tmp_path: Path) -> None:
             release.wait(timeout=5.0)
             return FakeMediaDownloader(payload=b"x").download(media, destination)
 
-    app = create_app(tmp_path, downloader=GatedDownloader())
+    app = _app_with_fake_season(tmp_path, downloader=GatedDownloader())
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/demo-show/1"},
         )
         job_id = created.json()["id"]
         _poll_until(
@@ -385,11 +393,11 @@ def test_dismiss_active_job_conflict(tmp_path: Path) -> None:
 
 
 def test_dismiss_completed_endpoint_counts(tmp_path: Path) -> None:
-    app = create_app(tmp_path)
+    app = _app_with_fake_season(tmp_path)
     with TestClient(app) as client:
         created = client.post(
             "/api/jobs",
-            json={"url": "https://demo.local/season/demo-show/1"},
+            json={"url": "https://fake.local/season/demo-show/1"},
         )
         job_id = created.json()["id"]
         _poll_until(

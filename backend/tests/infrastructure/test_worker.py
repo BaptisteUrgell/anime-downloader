@@ -25,7 +25,7 @@ from anime_downloader.infrastructure.db.session import (
     make_session_factory,
     run_migrations,
 )
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
+from tests.support.fake_season_adapter import FakeSeasonAdapter
 from anime_downloader.infrastructure.http_downloader import FakeMediaDownloader
 from anime_downloader.infrastructure.ids import UuidIdGenerator
 from anime_downloader.infrastructure.persistence.job_repository import (
@@ -147,12 +147,12 @@ def env(tmp_path: Path):
 
 def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
 
     job = start_season_download(
-        url="https://demo.local/season/demo-show/1",
+        url="https://fake.local/season/demo-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -191,7 +191,7 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
     for n, ep in enumerate(episodes, start=1):
         expected_path = (
             library_root
-            / "demo-show (Unknown)"
+            / "demo-show (2020)"
             / "Season 01"
             / f"demo-show S01E{n:02d}.mp4"
         ).resolve()
@@ -304,13 +304,13 @@ def test_worker_transitions_through_running_and_downloading(
 
 def test_worker_retries_transient_failure_with_injectable_sleep_backoff(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
     attempts_by_url: dict[str, int] = {}
 
     job = start_season_download(
-        url="https://demo.local/season/retry-show/1",
+        url="https://fake.local/season/retry-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -341,8 +341,8 @@ def test_worker_retries_transient_failure_with_injectable_sleep_backoff(env) -> 
         worker.stop()
 
     assert attempts_by_url == {
-        "https://demo.local/media/1.mp4": 3,
-        "https://demo.local/media/2.mp4": 1,
+        "https://fake.local/media/1.mp4": 3,
+        "https://fake.local/media/2.mp4": 1,
     }
     assert sleeps == [0.1, 0.2]
 
@@ -357,13 +357,13 @@ def test_worker_marks_episode_failed_after_max_attempts_and_completes_partial_jo
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
     ep2_attempts = 0
 
     job = start_season_download(
-        url="https://demo.local/season/partial-show/1",
+        url="https://fake.local/season/partial-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -415,12 +415,12 @@ def test_worker_marks_episode_failed_after_max_attempts_and_completes_partial_jo
 
 def test_worker_marks_job_failed_when_all_episodes_fail_or_discovery_dies(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2), _BrokenDiscoveryAdapter()])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2), _BrokenDiscoveryAdapter()])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
 
     all_fail_job = start_season_download(
-        url="https://demo.local/season/doomed-show/1",
+        url="https://fake.local/season/doomed-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -477,12 +477,12 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     downloaded_urls: list[str] = []
 
     crashed_job = start_season_download(
-        url="https://demo.local/season/crashed-show/1",
+        url="https://fake.local/season/crashed-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -535,8 +535,8 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
     finished_job = jobs.save(
         DownloadJob(
             id=ids.new_id(),
-            source_url="https://demo.local/season/old-show/1",
-            adapter_id="demo",
+            source_url="https://fake.local/season/old-show/1",
+            adapter_id="fake",
             status=JobStatus.COMPLETED,
             total_episodes=3,
             completed_episodes=3,
@@ -566,8 +566,8 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
         worker.stop()
 
     assert downloaded_urls == [
-        "https://demo.local/media/2.mp4",
-        "https://demo.local/media/3.mp4",
+        "https://fake.local/media/2.mp4",
+        "https://fake.local/media/3.mp4",
     ]
     assert ep1_existing_path.read_bytes() == b"already-downloaded"
 
@@ -584,12 +584,12 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
 
 def test_worker_integrates_with_retry_failed_use_case(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
     fail_ep2 = True
 
     initial_job = start_season_download(
-        url="https://demo.local/season/recover-show/1",
+        url="https://fake.local/season/recover-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -644,11 +644,11 @@ def test_worker_marks_retry_job_failed_when_zero_retried_episodes_succeed(
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
 
     initial_job = start_season_download(
-        url="https://demo.local/season/still-broken/1",
+        url="https://fake.local/season/still-broken/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -698,7 +698,7 @@ def test_worker_marks_retry_job_failed_when_zero_retried_episodes_succeed(
 def test_worker_skips_already_completed_episodes(env) -> None:
     jobs, library, library_root = env
     ids = UuidIdGenerator()
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
 
     series = library.upsert_series(Series(id=ids.new_id(), title="demo-show"))
     season = library.upsert_season(
@@ -715,7 +715,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
                 number=n,
                 title=f"Episode {n}",
                 status=EpisodeStatus.COMPLETED,
-                source_url=f"https://demo.local/season/demo-show/1/e/{n}",
+                source_url=f"https://fake.local/season/demo-show/1/e/{n}",
                 file_path=str(path.resolve()),
                 error_message=None,
             )
@@ -738,7 +738,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
         ids=ids,
     )
     job = start_season_download(
-        url="https://demo.local/season/demo-show/1",
+        url="https://fake.local/season/demo-show/1",
         registry=registry,
         jobs=jobs,
         library=library,

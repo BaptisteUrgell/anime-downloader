@@ -36,8 +36,8 @@ def _repo(tmp_path: Path) -> SqlAlchemyJobRepository:
 def _job(**kwargs) -> DownloadJob:
     base = dict(
         id="job-1",
-        source_url="https://demo.local/season/show/1",
-        adapter_id="demo",
+        source_url="https://fake.local/season/show/1",
+        adapter_id="fake",
         status=JobStatus.COMPLETED,
         total_episodes=3,
         completed_episodes=3,
