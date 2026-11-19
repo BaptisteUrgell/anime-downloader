@@ -1,8 +1,8 @@
 # anime-downloader
 
-Download a full anime season from a supported URL into a local library: paste a season link, preview the episode count, confirm, then watch progress while files land on disk.
+Self-hosted anime season downloader: paste a supported season URL, preview episodes, and save files into a local Jellyfin-friendly TV library (`Title (Year)/Season NN/...`).
 
-Built for solo / local use (Docker or native). The UI is in French; code and docs are in English.
+Works with Docker or a native backend + Vite UI. The UI is in French; code and docs are in English. Current source adapter: Anime-Sama (`anime-sama.to`).
 
 ## Supported adapters
 
