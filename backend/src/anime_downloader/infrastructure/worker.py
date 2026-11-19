@@ -299,6 +299,7 @@ class DownloadWorker:
                 s
                 for s in self._library.list_series()
                 if s.title == discovery.series_title
+                and s.release_year == discovery.release_year
             ),
             None,
         )
@@ -306,7 +307,11 @@ class DownloadWorker:
             existing_series.id if existing_series is not None else self._ids.new_id()
         )
         series = self._library.upsert_series(
-            Series(id=series_id, title=discovery.series_title)
+            Series(
+                id=series_id,
+                title=discovery.series_title,
+                release_year=discovery.release_year,
+            )
         )
 
         existing_season = next(

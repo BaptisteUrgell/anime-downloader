@@ -48,6 +48,31 @@ from anime_downloader.infrastructure.persistence.library_repository import (
 )
 
 
+class _YearAdapter:
+    @property
+    def adapter_id(self) -> str:
+        return "year-stub"
+
+    def matches(self, url: SourceUrl) -> bool:
+        return url.host == "year.local"
+
+    def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+        return SeasonDiscovery(
+            series_title="Hell's Paradise",
+            season_number=1,
+            release_year=2023,
+            episodes=(
+                EpisodeRef(source_url=url.value + "/e/1", number=1),
+            ),
+        )
+
+    def resolve_media(self, episode: EpisodeRef) -> MediaLocator:
+        return MediaLocator(url="https://year.local/media/1.mp4")
+
+    def next_episode(self, episode: EpisodeRef) -> EpisodeRef | None:
+        return None
+
+
 class _MutableEpisodeAdapter:
     def __init__(self, episode_count: int) -> None:
         self.episode_count = episode_count
@@ -96,6 +121,25 @@ def repos(tmp_path: Path):
         )
     finally:
         engine.dispose()
+
+
+def test_start_season_download_stores_release_year(repos) -> None:
+    jobs, library = repos
+    registry = AdapterRegistry([_YearAdapter()])
+    ids = UuidIdGenerator()
+
+    start_season_download(
+        url="https://year.local/season/hells-paradise/1",
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+
+    series_list = library.list_series()
+    assert len(series_list) == 1
+    assert series_list[0].title == "Hell's Paradise"
+    assert series_list[0].release_year == 2023
 
 
 def test_start_season_download_creates_and_persists_hierarchy_and_pending_job(
