@@ -177,7 +177,13 @@ def test_default_create_app_downloads_demo_season_without_custom_downloader(
         done_job = _poll_until(_done)
         assert done_job["completed_episodes"] == 3
 
-    expected_ep1 = tmp_path / "library" / "solo-demo" / "1" / "S01E01 - solo-demo.mp4"
+    expected_ep1 = (
+        tmp_path
+        / "library"
+        / "solo-demo (Unknown)"
+        / "Season 01"
+        / "solo-demo S01E01.mp4"
+    )
     assert expected_ep1.is_file()
 
 

@@ -28,6 +28,7 @@ from anime_downloader.domain.ports import (
     SourceAdapter,
 )
 from anime_downloader.infrastructure.ids import UuidIdGenerator
+from anime_downloader.infrastructure.library_paths import build_episode_path
 
 
 @dataclass(frozen=True)
@@ -459,18 +460,15 @@ class DownloadWorker:
         episode: Episode,
         media: MediaLocator,
     ) -> Path:
-        safe_series = _sanitize_segment(series.title)
-        ss = f"{season.number:02d}"
-        ee = f"{episode.number:02d}"
-        raw_title = (
-            episode.title.strip()
-            if episode.title and episode.title.strip()
-            else series.title
-        )
-        safe_title = _sanitize_segment(raw_title)
         ext = _extract_extension(media)
-        filename = f"S{ss}E{ee} - {safe_title}.{ext}"
-        return self._library_root / safe_series / str(season.number) / filename
+        return build_episode_path(
+            self._library_root,
+            series.title,
+            series.release_year,
+            season.number,
+            episode.number,
+            ext,
+        )
 
     def _save_job_progress(
         self, job: DownloadJob, season_id: str, status: JobStatus

@@ -75,6 +75,41 @@ class _TitledAdapter:
         return None
 
 
+class _HellsParadiseAdapter:
+    @property
+    def adapter_id(self) -> str:
+        return "hells"
+
+    def matches(self, url: SourceUrl) -> bool:
+        return url.host == "hells.local"
+
+    def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+        _ = url
+        return SeasonDiscovery(
+            series_title="Hell's Paradise",
+            season_number=1,
+            release_year=2023,
+            episodes=(
+                EpisodeRef(
+                    source_url="https://hells.local/season/hells-paradise/1/e/1",
+                    number=1,
+                    title="The First Death",
+                ),
+            ),
+        )
+
+    def resolve_media(self, episode: EpisodeRef) -> MediaLocator:
+        _ = episode
+        return MediaLocator(
+            url="https://hells.local/media/1.mp4",
+            suggested_filename="episode.mp4",
+        )
+
+    def next_episode(self, episode: EpisodeRef) -> EpisodeRef | None:
+        _ = episode
+        return None
+
+
 class _BrokenDiscoveryAdapter:
     @property
     def adapter_id(self) -> str:
@@ -155,7 +190,10 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
 
     for n, ep in enumerate(episodes, start=1):
         expected_path = (
-            library_root / "demo-show" / "1" / f"S01E{n:02d} - demo-show.mp4"
+            library_root
+            / "demo-show (Unknown)"
+            / "Season 01"
+            / f"demo-show S01E{n:02d}.mp4"
         ).resolve()
         assert ep.status == EpisodeStatus.COMPLETED
         assert ep.error_message is None
@@ -164,7 +202,49 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
         assert expected_path.read_bytes() == b"demo-video-bytes"
 
 
-def test_worker_uses_episode_title_and_transitions_through_running_and_downloading(
+def test_worker_writes_jellyfin_path_ignoring_episode_title(env) -> None:
+    jobs, library, library_root = env
+    registry = AdapterRegistry([_HellsParadiseAdapter()])
+    ids = UuidIdGenerator()
+
+    job = start_season_download(
+        url="https://hells.local/season/hells-paradise/1",
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+
+    worker = DownloadWorker(
+        jobs=jobs,
+        library=library,
+        registry=registry,
+        downloader=FakeMediaDownloader(payload=b"hells-bytes"),
+        library_root=library_root,
+        sleep=lambda _: None,
+    )
+    worker.start_background()
+    try:
+        worker.enqueue(job.id)
+        assert worker.wait_idle(timeout=5.0)
+    finally:
+        worker.stop()
+
+    expected = (
+        library_root
+        / "Hell's Paradise (2023)"
+        / "Season 01"
+        / "Hell's Paradise S01E01.mp4"
+    )
+    assert expected.is_file()
+    assert expected.read_bytes() == b"hells-bytes"
+    assert job.season_id is not None
+    episodes = library.list_episodes(job.season_id)
+    assert episodes[0].title == "The First Death"
+    assert episodes[0].file_path == str(expected.resolve())
+
+
+def test_worker_transitions_through_running_and_downloading(
     env,
 ) -> None:
     jobs, library, library_root = env
@@ -212,8 +292,12 @@ def test_worker_uses_episode_title_and_transitions_through_running_and_downloadi
         (2, JobStatus.RUNNING, EpisodeStatus.DOWNLOADING),
     ]
 
-    ep1_path = (library_root / "Frieren" / "1" / "S01E01 - Journey's End.mkv").resolve()
-    ep2_path = (library_root / "Frieren" / "1" / "S01E02 - A Mage's Trick.mkv").resolve()
+    ep1_path = (
+        library_root / "Frieren (Unknown)" / "Season 01" / "Frieren S01E01.mkv"
+    ).resolve()
+    ep2_path = (
+        library_root / "Frieren (Unknown)" / "Season 01" / "Frieren S01E02.mkv"
+    ).resolve()
     assert ep1_path.is_file()
     assert ep2_path.is_file()
 
