@@ -15,7 +15,7 @@ from anime_downloader.domain.model import (
     SourceUrl,
 )
 from anime_downloader.infrastructure.adapter_registry import AdapterRegistry
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
+from tests.support.fake_season_adapter import FakeSeasonAdapter
 
 
 class _FailingDiscoveryAdapter:
@@ -39,27 +39,28 @@ class _FailingDiscoveryAdapter:
         return None
 
 
-def test_preview_season_returns_discovery_for_demo_url() -> None:
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+def test_preview_season_returns_discovery_for_fake_url() -> None:
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
 
-    discovery = preview_season("https://demo.local/season/frieren/1", registry)
+    discovery = preview_season("https://fake.local/season/frieren/1", registry)
 
     assert discovery.series_title == "frieren"
+    assert discovery.release_year == 2020
     assert discovery.season_number == 1
     assert discovery.episode_count == 3
     assert [ep.number for ep in discovery.episodes] == [1, 2, 3]
 
 
-@pytest.mark.parametrize("bad_url", ["", "   ", "not-a-url", "ftp://demo.local/season/x/1"])
+@pytest.mark.parametrize("bad_url", ["", "   ", "not-a-url", "ftp://fake.local/season/x/1"])
 def test_preview_season_rejects_invalid_url(bad_url: str) -> None:
-    registry = AdapterRegistry([DemoAdapter()])
+    registry = AdapterRegistry([FakeSeasonAdapter()])
 
     with pytest.raises(InvalidSourceUrl):
         preview_season(bad_url, registry)
 
 
 def test_preview_season_raises_when_no_adapter_matches() -> None:
-    registry = AdapterRegistry([DemoAdapter()])
+    registry = AdapterRegistry([FakeSeasonAdapter()])
 
     with pytest.raises(NoAdapterFound):
         preview_season("https://unknown.example/season/frieren/1", registry)
@@ -68,13 +69,13 @@ def test_preview_season_raises_when_no_adapter_matches() -> None:
 def test_preview_season_wraps_adapter_error_in_discovery_failed() -> None:
     registry = AdapterRegistry(
         [
-            DemoAdapter(),
+            FakeSeasonAdapter(),
             _FailingDiscoveryAdapter(RuntimeError("upstream parse error")),
         ]
     )
 
     with pytest.raises(DiscoveryFailed):
-        preview_season("https://demo.local/season/missing-number", registry)
+        preview_season("https://fake.local/season/missing-number", registry)
 
     with pytest.raises(DiscoveryFailed, match="upstream parse error"):
         preview_season("https://broken.local/season/show/1", registry)

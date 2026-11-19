@@ -16,12 +16,24 @@ class SqlAlchemyLibraryRepository:
             row = session.get(SeriesRow, series.id)
             if row is not None:
                 row.title = series.title
+                row.release_year = series.release_year
             else:
+                if series.release_year is None:
+                    year_match = SeriesRow.release_year.is_(None)
+                else:
+                    year_match = SeriesRow.release_year == series.release_year
                 row = session.scalar(
-                    select(SeriesRow).where(SeriesRow.title == series.title)
+                    select(SeriesRow).where(
+                        SeriesRow.title == series.title,
+                        year_match,
+                    )
                 )
                 if row is None:
-                    row = SeriesRow(id=series.id, title=series.title)
+                    row = SeriesRow(
+                        id=series.id,
+                        title=series.title,
+                        release_year=series.release_year,
+                    )
                     session.add(row)
             session.commit()
             return _to_series(row)
@@ -124,9 +136,36 @@ class SqlAlchemyLibraryRepository:
             ).all()
             return [_to_episode(row) for row in rows]
 
+    def delete_series(self, series_id: str) -> None:
+        with self._session_factory() as session:
+            row = session.get(SeriesRow, series_id)
+            if row is not None:
+                session.delete(row)
+                session.commit()
+
+    def delete_season(self, season_id: str) -> None:
+        with self._session_factory() as session:
+            episodes = session.scalars(
+                select(EpisodeRow).where(EpisodeRow.season_id == season_id)
+            ).all()
+            for episode in episodes:
+                session.delete(episode)
+            row = session.get(SeasonRow, season_id)
+            if row is not None:
+                session.delete(row)
+            session.commit()
+
+    def reassign_season(self, season_id: str, new_series_id: str) -> None:
+        with self._session_factory() as session:
+            row = session.get(SeasonRow, season_id)
+            if row is None:
+                return
+            row.series_id = new_series_id
+            session.commit()
+
 
 def _to_series(row: SeriesRow) -> Series:
-    return Series(id=row.id, title=row.title)
+    return Series(id=row.id, title=row.title, release_year=row.release_year)
 
 
 def _to_season(row: SeasonRow) -> Season:

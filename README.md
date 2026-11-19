@@ -8,8 +8,7 @@ Built for solo / local use (Docker or native). The UI is in French; code and doc
 
 | Adapter ID | Host | Example URL | Notes |
 |------------|------|-------------|--------|
-| `anime-sama` | `anime-sama.to` (and subdomains) | `https://anime-sama.to/catalogue/<slug>/saison1/vostfr/` | Real site. Season page only (one URL = one season). Streams remuxed to `.mp4` when needed. |
-| `demo` | `demo.local` | `https://demo.local/season/demo-show/1` | Fake adapter for UI / E2E tests (no real network). |
+| `anime-sama` | `anime-sama.to` (and subdomains) | `https://anime-sama.to/catalogue/hells-paradise/saison1/vostfr/` | Real site. Season page only (one URL = one season). Streams remuxed to `.mp4` when needed. |
 
 Unsupported hosts return a clear “no adapter” error at preview time. More adapters can be added behind the same `SourceAdapter` port.
 
@@ -24,7 +23,7 @@ docker compose up -d --build
 Then open **http://localhost:8080**.
 
 - Downloads and SQLite DB are stored under **`./data/`** on your machine (bind-mounted into the container).
-- Videos: `./data/library/{series}/{season}/S01E01 - ….mp4`
+- Videos: `./data/library/{Series Title} ({Year})/Season 01/{Series Title} S01E01.mp4` (Jellyfin TV layout)
 - Stop: `docker compose down`
 
 Optional, if you use [go-task](https://taskfile.dev):
@@ -75,3 +74,4 @@ Useful tasks:
 
 - Product design: `docs/superpowers/specs/2026-11-17-anime-downloader-design.md`
 - Anime-Sama adapter: `docs/superpowers/specs/2026-11-18-anime-sama-adapter-design.md`
+- Jellyfin library paths: `docs/superpowers/specs/2026-11-19-jellyfin-library-naming-design.md`

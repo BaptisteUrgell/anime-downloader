@@ -157,7 +157,7 @@ export function UrlDownloadForm() {
                     id={field.name}
                     name={field.name}
                     type="url"
-                    placeholder="https://demo.local/season/demo-show/1"
+                    placeholder="https://anime-sama.to/catalogue/hells-paradise/saison1/vostfr/"
                     value={field.state.value}
                     aria-invalid={Boolean(fieldError || isPreviewError)}
                     className="h-12 font-mono text-sm md:text-sm"

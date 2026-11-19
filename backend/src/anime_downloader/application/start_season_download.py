@@ -37,11 +37,22 @@ def start_season_download(
         ) from exc
 
     existing_series = next(
-        (s for s in library.list_series() if s.title == discovery.series_title),
+        (
+            s
+            for s in library.list_series()
+            if s.title == discovery.series_title
+            and s.release_year == discovery.release_year
+        ),
         None,
     )
     series_id = existing_series.id if existing_series is not None else ids.new_id()
-    series = library.upsert_series(Series(id=series_id, title=discovery.series_title))
+    series = library.upsert_series(
+        Series(
+            id=series_id,
+            title=discovery.series_title,
+            release_year=discovery.release_year,
+        )
+    )
 
     existing_season = next(
         (

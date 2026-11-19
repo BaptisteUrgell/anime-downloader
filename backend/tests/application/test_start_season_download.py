@@ -38,7 +38,7 @@ from anime_downloader.infrastructure.db.session import (
     make_session_factory,
     run_migrations,
 )
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
+from tests.support.fake_season_adapter import FakeSeasonAdapter
 from anime_downloader.infrastructure.ids import UuidIdGenerator
 from anime_downloader.infrastructure.persistence.job_repository import (
     SqlAlchemyJobRepository,
@@ -46,6 +46,31 @@ from anime_downloader.infrastructure.persistence.job_repository import (
 from anime_downloader.infrastructure.persistence.library_repository import (
     SqlAlchemyLibraryRepository,
 )
+
+
+class _YearAdapter:
+    @property
+    def adapter_id(self) -> str:
+        return "year-stub"
+
+    def matches(self, url: SourceUrl) -> bool:
+        return url.host == "year.local"
+
+    def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+        return SeasonDiscovery(
+            series_title="Hell's Paradise",
+            season_number=1,
+            release_year=2023,
+            episodes=(
+                EpisodeRef(source_url=url.value + "/e/1", number=1),
+            ),
+        )
+
+    def resolve_media(self, episode: EpisodeRef) -> MediaLocator:
+        return MediaLocator(url="https://year.local/media/1.mp4")
+
+    def next_episode(self, episode: EpisodeRef) -> EpisodeRef | None:
+        return None
 
 
 class _MutableEpisodeAdapter:
@@ -98,15 +123,34 @@ def repos(tmp_path: Path):
         engine.dispose()
 
 
+def test_start_season_download_stores_release_year(repos) -> None:
+    jobs, library = repos
+    registry = AdapterRegistry([_YearAdapter()])
+    ids = UuidIdGenerator()
+
+    start_season_download(
+        url="https://year.local/season/hells-paradise/1",
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+
+    series_list = library.list_series()
+    assert len(series_list) == 1
+    assert series_list[0].title == "Hell's Paradise"
+    assert series_list[0].release_year == 2023
+
+
 def test_start_season_download_creates_and_persists_hierarchy_and_pending_job(
     repos,
 ) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
 
     job = start_season_download(
-        url="https://demo.local/season/frieren/1",
+        url="https://fake.local/season/frieren/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -114,8 +158,8 @@ def test_start_season_download_creates_and_persists_hierarchy_and_pending_job(
     )
 
     assert job.status == JobStatus.PENDING
-    assert job.adapter_id == "demo"
-    assert job.source_url == "https://demo.local/season/frieren/1"
+    assert job.adapter_id == "fake"
+    assert job.source_url == "https://fake.local/season/frieren/1"
     assert job.total_episodes == 3
     assert job.completed_episodes == 0
     assert job.failed_episodes == 0
@@ -131,6 +175,7 @@ def test_start_season_download_creates_and_persists_hierarchy_and_pending_job(
     assert len(series_list) == 1
     assert series_list[0].id == job.series_id
     assert series_list[0].title == "frieren"
+    assert series_list[0].release_year == 2020
 
     seasons = library.list_seasons(job.series_id)
     assert len(seasons) == 1
@@ -141,9 +186,9 @@ def test_start_season_download_creates_and_persists_hierarchy_and_pending_job(
     assert [ep.number for ep in episodes] == [1, 2, 3]
     assert all(ep.status == EpisodeStatus.PENDING for ep in episodes)
     assert [ep.source_url for ep in episodes] == [
-        "https://demo.local/season/frieren/1/e/1",
-        "https://demo.local/season/frieren/1/e/2",
-        "https://demo.local/season/frieren/1/e/3",
+        "https://fake.local/season/frieren/1/e/1",
+        "https://fake.local/season/frieren/1/e/2",
+        "https://fake.local/season/frieren/1/e/3",
     ]
 
 
@@ -175,9 +220,9 @@ def test_start_season_download_preserves_completed_episodes_on_redownload(
     repos,
 ) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
-    url = "https://demo.local/season/orb/1"
+    url = "https://fake.local/season/orb/1"
 
     first_job = start_season_download(url, registry, jobs, library, ids)
     assert first_job.season_id is not None
@@ -229,7 +274,7 @@ def test_start_season_download_validates_url_adapter_and_discovery_errors(
     repos,
 ) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
 
     with pytest.raises(InvalidSourceUrl):
@@ -242,7 +287,7 @@ def test_start_season_download_validates_url_adapter_and_discovery_errors(
 
     with pytest.raises(DiscoveryFailed):
         start_season_download(
-            "https://demo.local/season/missing-season-num",
+            "https://fake.local/season/missing-season-num",
             registry,
             jobs,
             library,
@@ -262,16 +307,16 @@ def test_get_job_raises_job_not_found_for_unknown_id(repos) -> None:
 
 def test_list_library_returns_nested_series_seasons_and_episodes(repos) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
 
     assert list_library(library) == []
 
     job_b = start_season_download(
-        "https://demo.local/season/vinland/2", registry, jobs, library, ids
+        "https://fake.local/season/vinland/2", registry, jobs, library, ids
     )
     job_a1 = start_season_download(
-        "https://demo.local/season/frieren/1", registry, jobs, library, ids
+        "https://fake.local/season/frieren/1", registry, jobs, library, ids
     )
     assert job_a1.season_id is not None
     assert job_b.season_id is not None
@@ -310,11 +355,11 @@ def test_list_library_returns_nested_series_seasons_and_episodes(repos) -> None:
 
 def test_retry_failed_resets_failed_episodes_and_enqueues_pending_job(repos) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
 
     initial_job = start_season_download(
-        "https://demo.local/season/meshi/1", registry, jobs, library, ids
+        "https://fake.local/season/meshi/1", registry, jobs, library, ids
     )
     assert initial_job.season_id is not None
     eps = library.list_episodes(initial_job.season_id)
@@ -366,8 +411,8 @@ def test_retry_failed_resets_failed_episodes_and_enqueues_pending_job(repos) -> 
 
     assert retried_job.id != initial_job.id
     assert retried_job.status == JobStatus.PENDING
-    assert retried_job.source_url == "https://demo.local/season/meshi/1"
-    assert retried_job.adapter_id == "demo"
+    assert retried_job.source_url == "https://fake.local/season/meshi/1"
+    assert retried_job.adapter_id == "fake"
     assert retried_job.series_id == initial_job.series_id
     assert retried_job.season_id == initial_job.season_id
     assert retried_job.total_episodes == 3
@@ -390,14 +435,14 @@ def test_retry_failed_resets_failed_episodes_and_enqueues_pending_job(repos) -> 
 
 def test_retry_failed_raises_for_unknown_season_or_no_failed_episodes(repos) -> None:
     jobs, library = repos
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
 
     with pytest.raises(SeasonNotFound):
         retry_failed("unknown-season-id", library, jobs, ids)
 
     job = start_season_download(
-        "https://demo.local/season/clean-show/1", registry, jobs, library, ids
+        "https://fake.local/season/clean-show/1", registry, jobs, library, ids
     )
     assert job.season_id is not None
 

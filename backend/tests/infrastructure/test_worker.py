@@ -25,9 +25,10 @@ from anime_downloader.infrastructure.db.session import (
     make_session_factory,
     run_migrations,
 )
-from anime_downloader.infrastructure.demo_adapter import DemoAdapter
+from tests.support.fake_season_adapter import FakeSeasonAdapter
 from anime_downloader.infrastructure.http_downloader import FakeMediaDownloader
 from anime_downloader.infrastructure.ids import UuidIdGenerator
+from anime_downloader.infrastructure.library_paths import build_episode_path
 from anime_downloader.infrastructure.persistence.job_repository import (
     SqlAlchemyJobRepository,
 )
@@ -75,6 +76,41 @@ class _TitledAdapter:
         return None
 
 
+class _HellsParadiseAdapter:
+    @property
+    def adapter_id(self) -> str:
+        return "hells"
+
+    def matches(self, url: SourceUrl) -> bool:
+        return url.host == "hells.local"
+
+    def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+        _ = url
+        return SeasonDiscovery(
+            series_title="Hell's Paradise",
+            season_number=1,
+            release_year=2023,
+            episodes=(
+                EpisodeRef(
+                    source_url="https://hells.local/season/hells-paradise/1/e/1",
+                    number=1,
+                    title="The First Death",
+                ),
+            ),
+        )
+
+    def resolve_media(self, episode: EpisodeRef) -> MediaLocator:
+        _ = episode
+        return MediaLocator(
+            url="https://hells.local/media/1.mp4",
+            suggested_filename="episode.mp4",
+        )
+
+    def next_episode(self, episode: EpisodeRef) -> EpisodeRef | None:
+        _ = episode
+        return None
+
+
 class _BrokenDiscoveryAdapter:
     @property
     def adapter_id(self) -> str:
@@ -112,12 +148,12 @@ def env(tmp_path: Path):
 
 def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
 
     job = start_season_download(
-        url="https://demo.local/season/demo-show/1",
+        url="https://fake.local/season/demo-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -155,7 +191,10 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
 
     for n, ep in enumerate(episodes, start=1):
         expected_path = (
-            library_root / "demo-show" / "1" / f"S01E{n:02d} - demo-show.mp4"
+            library_root
+            / "demo-show (2020)"
+            / "Season 01"
+            / f"demo-show S01E{n:02d}.mp4"
         ).resolve()
         assert ep.status == EpisodeStatus.COMPLETED
         assert ep.error_message is None
@@ -164,7 +203,113 @@ def test_worker_downloads_three_episodes_to_disk_and_updates_db(env) -> None:
         assert expected_path.read_bytes() == b"demo-video-bytes"
 
 
-def test_worker_uses_episode_title_and_transitions_through_running_and_downloading(
+def test_worker_writes_jellyfin_path_ignoring_episode_title(env) -> None:
+    jobs, library, library_root = env
+    registry = AdapterRegistry([_HellsParadiseAdapter()])
+    ids = UuidIdGenerator()
+
+    job = start_season_download(
+        url="https://hells.local/season/hells-paradise/1",
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+
+    worker = DownloadWorker(
+        jobs=jobs,
+        library=library,
+        registry=registry,
+        downloader=FakeMediaDownloader(payload=b"hells-bytes"),
+        library_root=library_root,
+        sleep=lambda _: None,
+    )
+    worker.start_background()
+    try:
+        worker.enqueue(job.id)
+        assert worker.wait_idle(timeout=5.0)
+    finally:
+        worker.stop()
+
+    expected = (
+        library_root
+        / "Hell's Paradise (2023)"
+        / "Season 01"
+        / "Hell's Paradise S01E01.mp4"
+    )
+    assert expected.is_file()
+    assert expected.read_bytes() == b"hells-bytes"
+    assert job.season_id is not None
+    episodes = library.list_episodes(job.season_id)
+    assert episodes[0].title == "The First Death"
+    assert episodes[0].file_path == str(expected.resolve())
+
+
+def test_worker_second_download_overwrites_jellyfin_file(env) -> None:
+    jobs, library, library_root = env
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=1)])
+    ids = UuidIdGenerator()
+    url = "https://fake.local/season/demo-show/1"
+    expected = build_episode_path(library_root, "demo-show", 2020, 1, 1, "mp4")
+
+    def run_download(payload: bytes, job_id: str) -> None:
+        worker = DownloadWorker(
+            jobs=jobs,
+            library=library,
+            registry=registry,
+            downloader=FakeMediaDownloader(payload=payload),
+            library_root=library_root,
+            sleep=lambda _: None,
+        )
+        worker.start_background()
+        try:
+            worker.enqueue(job_id)
+            assert worker.wait_idle(timeout=5.0)
+        finally:
+            worker.stop()
+
+    first = start_season_download(
+        url=url,
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+    run_download(b"first-bytes", first.id)
+    assert expected.read_bytes() == b"first-bytes"
+    assert first.season_id is not None
+    stored = library.list_episodes(first.season_id)[0]
+    library.upsert_episode(
+        Episode(
+            id=stored.id,
+            season_id=stored.season_id,
+            number=stored.number,
+            title=stored.title,
+            status=EpisodeStatus.PENDING,
+            source_url=stored.source_url,
+            file_path=stored.file_path,
+            error_message=None,
+        )
+    )
+
+    second = start_season_download(
+        url=url,
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+    run_download(b"second-bytes", second.id)
+
+    assert expected.read_bytes() == b"second-bytes"
+    overwritten = library.list_episodes(first.season_id)[0]
+    assert overwritten.file_path == str(expected.resolve())
+    refreshed = jobs.get(second.id)
+    assert refreshed is not None
+    assert refreshed.status == JobStatus.COMPLETED
+
+
+def test_worker_transitions_through_running_and_downloading(
     env,
 ) -> None:
     jobs, library, library_root = env
@@ -212,21 +357,25 @@ def test_worker_uses_episode_title_and_transitions_through_running_and_downloadi
         (2, JobStatus.RUNNING, EpisodeStatus.DOWNLOADING),
     ]
 
-    ep1_path = (library_root / "Frieren" / "1" / "S01E01 - Journey's End.mkv").resolve()
-    ep2_path = (library_root / "Frieren" / "1" / "S01E02 - A Mage's Trick.mkv").resolve()
+    ep1_path = (
+        library_root / "Frieren (Unknown)" / "Season 01" / "Frieren S01E01.mkv"
+    ).resolve()
+    ep2_path = (
+        library_root / "Frieren (Unknown)" / "Season 01" / "Frieren S01E02.mkv"
+    ).resolve()
     assert ep1_path.is_file()
     assert ep2_path.is_file()
 
 
 def test_worker_retries_transient_failure_with_injectable_sleep_backoff(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
     attempts_by_url: dict[str, int] = {}
 
     job = start_season_download(
-        url="https://demo.local/season/retry-show/1",
+        url="https://fake.local/season/retry-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -257,8 +406,8 @@ def test_worker_retries_transient_failure_with_injectable_sleep_backoff(env) -> 
         worker.stop()
 
     assert attempts_by_url == {
-        "https://demo.local/media/1.mp4": 3,
-        "https://demo.local/media/2.mp4": 1,
+        "https://fake.local/media/1.mp4": 3,
+        "https://fake.local/media/2.mp4": 1,
     }
     assert sleeps == [0.1, 0.2]
 
@@ -273,13 +422,13 @@ def test_worker_marks_episode_failed_after_max_attempts_and_completes_partial_jo
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
     ep2_attempts = 0
 
     job = start_season_download(
-        url="https://demo.local/season/partial-show/1",
+        url="https://fake.local/season/partial-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -331,12 +480,12 @@ def test_worker_marks_episode_failed_after_max_attempts_and_completes_partial_jo
 
 def test_worker_marks_job_failed_when_all_episodes_fail_or_discovery_dies(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2), _BrokenDiscoveryAdapter()])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2), _BrokenDiscoveryAdapter()])
     ids = UuidIdGenerator()
     sleeps: list[float] = []
 
     all_fail_job = start_season_download(
-        url="https://demo.local/season/doomed-show/1",
+        url="https://fake.local/season/doomed-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -393,12 +542,12 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=3)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=3)])
     ids = UuidIdGenerator()
     downloaded_urls: list[str] = []
 
     crashed_job = start_season_download(
-        url="https://demo.local/season/crashed-show/1",
+        url="https://fake.local/season/crashed-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -451,8 +600,8 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
     finished_job = jobs.save(
         DownloadJob(
             id=ids.new_id(),
-            source_url="https://demo.local/season/old-show/1",
-            adapter_id="demo",
+            source_url="https://fake.local/season/old-show/1",
+            adapter_id="fake",
             status=JobStatus.COMPLETED,
             total_episodes=3,
             completed_episodes=3,
@@ -482,8 +631,8 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
         worker.stop()
 
     assert downloaded_urls == [
-        "https://demo.local/media/2.mp4",
-        "https://demo.local/media/3.mp4",
+        "https://fake.local/media/2.mp4",
+        "https://fake.local/media/3.mp4",
     ]
     assert ep1_existing_path.read_bytes() == b"already-downloaded"
 
@@ -500,12 +649,12 @@ def test_worker_resume_incomplete_resumes_interrupted_jobs_and_skips_completed(
 
 def test_worker_integrates_with_retry_failed_use_case(env) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
     fail_ep2 = True
 
     initial_job = start_season_download(
-        url="https://demo.local/season/recover-show/1",
+        url="https://fake.local/season/recover-show/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -560,11 +709,11 @@ def test_worker_marks_retry_job_failed_when_zero_retried_episodes_succeed(
     env,
 ) -> None:
     jobs, library, library_root = env
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
     ids = UuidIdGenerator()
 
     initial_job = start_season_download(
-        url="https://demo.local/season/still-broken/1",
+        url="https://fake.local/season/still-broken/1",
         registry=registry,
         jobs=jobs,
         library=library,
@@ -614,7 +763,7 @@ def test_worker_marks_retry_job_failed_when_zero_retried_episodes_succeed(
 def test_worker_skips_already_completed_episodes(env) -> None:
     jobs, library, library_root = env
     ids = UuidIdGenerator()
-    registry = AdapterRegistry([DemoAdapter(episode_count=2)])
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=2)])
 
     series = library.upsert_series(Series(id=ids.new_id(), title="demo-show"))
     season = library.upsert_season(
@@ -631,7 +780,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
                 number=n,
                 title=f"Episode {n}",
                 status=EpisodeStatus.COMPLETED,
-                source_url=f"https://demo.local/season/demo-show/1/e/{n}",
+                source_url=f"https://fake.local/season/demo-show/1/e/{n}",
                 file_path=str(path.resolve()),
                 error_message=None,
             )
@@ -654,7 +803,7 @@ def test_worker_skips_already_completed_episodes(env) -> None:
         ids=ids,
     )
     job = start_season_download(
-        url="https://demo.local/season/demo-show/1",
+        url="https://fake.local/season/demo-show/1",
         registry=registry,
         jobs=jobs,
         library=library,

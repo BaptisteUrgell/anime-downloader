@@ -22,9 +22,11 @@ class AnimeSamaAdapter:
 
     def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
         episodes = self._provider.discover_season(url.value)
-        series_title, season_number = _parse_season_meta(url.value)
+        slug, season_number = _parse_slug_and_season(url.value)
+        title, year = self._provider.fetch_oeuvre_meta(_oeuvre_url(url.value, slug))
         return SeasonDiscovery(
-            series_title=series_title,
+            series_title=title,
+            release_year=year,
             season_number=season_number,
             episodes=tuple(
                 EpisodeRef(source_url=url.value, number=ep.number, title=ep.title)
@@ -57,7 +59,7 @@ class AnimeSamaAdapter:
         return None
 
 
-def _parse_season_meta(season_url: str) -> tuple[str, int]:
+def _parse_slug_and_season(season_url: str) -> tuple[str, int]:
     parsed = urlparse(season_url)
     parts = [p for p in parsed.path.split("/") if p]
     if len(parts) < 3 or parts[0].lower() != "catalogue":
@@ -68,5 +70,9 @@ def _parse_season_meta(season_url: str) -> tuple[str, int]:
     if season_match is None:
         raise ValueError(f"Cannot parse season number from URL: {season_url!r}")
 
-    series_title = f"{slug}-{parts[3]}" if len(parts) >= 4 else slug
-    return series_title, int(season_match.group(1))
+    return slug, int(season_match.group(1))
+
+
+def _oeuvre_url(season_url: str, slug: str) -> str:
+    parsed = urlparse(season_url)
+    return f"{parsed.scheme}://{parsed.netloc}/catalogue/{slug}/"

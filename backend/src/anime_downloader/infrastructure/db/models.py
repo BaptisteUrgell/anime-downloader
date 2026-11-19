@@ -8,9 +8,13 @@ from anime_downloader.infrastructure.db.base import Base
 
 class SeriesRow(Base):
     __tablename__ = "series"
+    __table_args__ = (
+        UniqueConstraint("title", "release_year", name="uq_series_title_release_year"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    title: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    release_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SeasonRow(Base):

@@ -54,6 +54,7 @@ class SeasonDiscovery:
     series_title: str
     season_number: int
     episodes: tuple[EpisodeRef, ...]
+    release_year: int | None = None
 
     @property
     def episode_count(self) -> int:
@@ -71,6 +72,7 @@ class MediaLocator:
 class Series:
     id: str
     title: str
+    release_year: int | None = None
 
 
 @dataclass

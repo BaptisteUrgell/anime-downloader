@@ -32,6 +32,67 @@ def test_matches_season_url():
     provider.close()
 
 
+OEUVRE_URL = "https://anime-sama.to/catalogue/hells-paradise/"
+
+
+def _oeuvre_html() -> str:
+    return (FIXTURES / "oeuvre_page.html").read_text(encoding="utf-8")
+
+
+def test_fetch_oeuvre_meta_parses_title_and_year():
+    html = _oeuvre_html()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == OEUVRE_URL
+        return httpx.Response(200, text=html)
+
+    provider = AnimeSamaProvider()
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler))
+    title, year = provider.fetch_oeuvre_meta(OEUVRE_URL)
+    assert title == "Hell's Paradise"
+    assert year == 2023
+    provider.close()
+
+
+def test_fetch_oeuvre_meta_unescapes_html_entities():
+    page = (
+        '<h1 id="titreOeuvre">Hell&#039;s Paradise &amp; Wolf</h1>'
+        '<p class="oe-meta">2023</p>'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=page)
+
+    provider = AnimeSamaProvider()
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler))
+    title, year = provider.fetch_oeuvre_meta(OEUVRE_URL)
+    assert title == "Hell's Paradise & Wolf"
+    assert year == 2023
+    provider.close()
+
+
+def test_fetch_oeuvre_meta_missing_title_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text='<p class="oe-meta">2023</p>')
+
+    provider = AnimeSamaProvider()
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(AnimeSamaError, match="titreOeuvre"):
+        provider.fetch_oeuvre_meta(OEUVRE_URL)
+    provider.close()
+
+
+def test_fetch_oeuvre_meta_http_error_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    provider = AnimeSamaProvider()
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(AnimeSamaError):
+        provider.fetch_oeuvre_meta(OEUVRE_URL)
+    provider.close()
+
+
 def test_discover_season_filters_dead_hosts_and_caches(monkeypatch: pytest.MonkeyPatch):
     html = _html()
 
