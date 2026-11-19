@@ -28,6 +28,12 @@ EPS_META_RE = re.compile(r"var\s+epsMeta\s*=\s*(\{.*?\})\s*;", re.DOTALL)
 EPS_JETON_RE = re.compile(r'var\s+epsJeton\s*=\s*["\']([^"\']+)["\']\s*;')
 LECTEURS_INFOS_RE = re.compile(r"var\s+lecteursInfos\s*=\s*(\{.*?\})\s*;", re.DOTALL)
 SAISON_SUIVANTE_RE = re.compile(r"var\s+ctSaisonSuivante\s*=\s*([^;]+)\s*;")
+TITRE_OEUVRE_RE = re.compile(
+    r'id=["\']titreOeuvre["\'][^>]*>([^<]+)<', re.IGNORECASE
+)
+OE_META_YEAR_RE = re.compile(
+    r'class=["\']oe-meta["\'][^>]*>\s*(\d{4})\b', re.IGNORECASE
+)
 
 _PERMANENT_DOWNLOAD_MARKERS = (
     "404",
@@ -173,6 +179,24 @@ class AnimeSamaProvider:
         host = parsed.hostname.lower()
         is_valid_host = host == "anime-sama.to" or host.endswith(".anime-sama.to")
         return is_valid_host and bool(SEASON_PATH_RE.match(parsed.path))
+
+    def fetch_oeuvre_meta(self, oeuvre_url: str) -> tuple[str, int | None]:
+        try:
+            response = self.client.get(oeuvre_url)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise AnimeSamaError(f"Failed to fetch oeuvre page {oeuvre_url}") from exc
+
+        html = response.text
+        title_match = TITRE_OEUVRE_RE.search(html)
+        if title_match is None:
+            raise AnimeSamaError(f"Missing titreOeuvre on {oeuvre_url}")
+        title = title_match.group(1).strip()
+        if not title:
+            raise AnimeSamaError(f"Missing titreOeuvre on {oeuvre_url}")
+        year_match = OE_META_YEAR_RE.search(html)
+        year = int(year_match.group(1)) if year_match else None
+        return title, year
 
     def discover_season(self, url: str) -> list[ProviderEpisode]:
         if not self.matches(url):
