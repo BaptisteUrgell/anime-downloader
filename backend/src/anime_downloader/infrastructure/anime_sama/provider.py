@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import re
 import threading
@@ -187,14 +188,14 @@ class AnimeSamaProvider:
         except httpx.HTTPError as exc:
             raise AnimeSamaError(f"Failed to fetch oeuvre page {oeuvre_url}") from exc
 
-        html = response.text
-        title_match = TITRE_OEUVRE_RE.search(html)
+        page = response.text
+        title_match = TITRE_OEUVRE_RE.search(page)
         if title_match is None:
             raise AnimeSamaError(f"Missing titreOeuvre on {oeuvre_url}")
-        title = title_match.group(1).strip()
+        title = html.unescape(title_match.group(1)).strip()
         if not title:
             raise AnimeSamaError(f"Missing titreOeuvre on {oeuvre_url}")
-        year_match = OE_META_YEAR_RE.search(html)
+        year_match = OE_META_YEAR_RE.search(page)
         year = int(year_match.group(1)) if year_match else None
         return title, year
 

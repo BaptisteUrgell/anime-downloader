@@ -44,6 +44,7 @@ class YtDlpMediaDownloader:
             "http_headers": dict(media.headers),
             "retries": 3,
             "fragment_retries": 3,
+            "overwrites": True,
         }
         if on_progress is not None:
             on_progress(0.0)

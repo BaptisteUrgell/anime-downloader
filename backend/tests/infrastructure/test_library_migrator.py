@@ -75,8 +75,10 @@ def _completed_episode(
     file_path: Path,
     payload: bytes,
     season_number: int = 1,
+    release_year: int | None = None,
+    episode_title: str | None = "Episode",
 ) -> None:
-    repo.upsert_series(Series(id=series_id, title=title, release_year=None))
+    repo.upsert_series(Series(id=series_id, title=title, release_year=release_year))
     repo.upsert_season(
         Season(id=season_id, series_id=series_id, number=season_number)
     )
@@ -87,7 +89,7 @@ def _completed_episode(
             id=episode_id,
             season_id=season_id,
             number=number,
-            title="Episode",
+            title=episode_title,
             status=EpisodeStatus.COMPLETED,
             source_url=source_url,
             file_path=str(file_path),
@@ -176,6 +178,103 @@ def test_migrate_is_idempotent(tmp_path: Path, session_factory) -> None:
     ]
 
 
+def test_skips_discovery_when_file_already_matches_jellyfin_path(
+    tmp_path: Path, session_factory
+) -> None:
+    library_root = tmp_path / "library"
+    repo = _repo(session_factory)
+    expected = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mp4")
+
+    class _OfflineAdapter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        @property
+        def adapter_id(self) -> str:
+            return "stub"
+
+        def matches(self, url: SourceUrl) -> bool:
+            return url.host == "stub.local"
+
+        def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+            self.calls += 1
+            raise RuntimeError(f"offline {url.value}")
+
+    _completed_episode(
+        repo,
+        series_id="s-hells",
+        title="Hell's Paradise",
+        release_year=2023,
+        season_id="sea-1",
+        episode_id="ep-1",
+        number=1,
+        source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+        file_path=expected,
+        payload=b"already-there",
+    )
+    adapter = _OfflineAdapter()
+
+    report = migrate_library(
+        library=repo,
+        registry=AdapterRegistry([adapter]),
+        library_root=library_root,
+    )
+
+    assert adapter.calls == 0
+    assert report.renamed_files == 0
+    assert report.merged_series == 0
+    assert report.errors == []
+    assert expected.read_bytes() == b"already-there"
+    assert repo.list_series() == [
+        Series(id="s-hells", title="Hell's Paradise", release_year=2023)
+    ]
+
+
+def test_discovers_when_recorded_jellyfin_path_is_missing(
+    tmp_path: Path, session_factory
+) -> None:
+    library_root = tmp_path / "library"
+    repo = _repo(session_factory)
+    missing = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mp4")
+    repo.upsert_series(Series(id="s-hells", title="Hell's Paradise", release_year=2023))
+    repo.upsert_season(Season(id="sea-1", series_id="s-hells", number=1))
+    repo.upsert_episode(
+        Episode(
+            id="ep-1",
+            season_id="sea-1",
+            number=1,
+            title="Episode",
+            status=EpisodeStatus.COMPLETED,
+            source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+            file_path=str(missing),
+        )
+    )
+
+    class _CountingAdapter(_MetaAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def discover_season(self, url: SourceUrl) -> SeasonDiscovery:
+            self.calls += 1
+            return super().discover_season(url)
+
+    adapter = _CountingAdapter()
+    report = migrate_library(
+        library=repo,
+        registry=AdapterRegistry([adapter]),
+        library_root=library_root,
+    )
+
+    assert adapter.calls == 1
+    assert report.renamed_files == 0
+    assert report.errors == []
+    stored = repo.get_episode("ep-1")
+    assert stored is not None
+    assert stored.file_path == str(missing)
+    assert not missing.exists()
+
+
 def test_merge_duplicate_series_same_title_year(tmp_path: Path, session_factory) -> None:
     library_root = tmp_path / "library"
     repo = _repo(session_factory)
@@ -254,7 +353,7 @@ def test_same_season_merge_keeps_completed_file_when_earlier_row_failed(
             id="ep-failed",
             season_id="sea-failed",
             number=1,
-            title="Episode",
+            title="Failed cut",
             status=EpisodeStatus.FAILED,
             source_url="https://stub.local/catalogue/hells-paradise/saison1/vf",
             error_message="download failed",
@@ -270,6 +369,7 @@ def test_same_season_merge_keeps_completed_file_when_earlier_row_failed(
         source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
         file_path=completed_path,
         payload=payload,
+        episode_title="Finished cut",
     )
     assert [series.id for series in repo.list_series()] == ["s-failed", "s-done"]
     registry = AdapterRegistry([_MetaAdapter()])
@@ -284,11 +384,79 @@ def test_same_season_merge_keeps_completed_file_when_earlier_row_failed(
     assert survivor is not None
     assert survivor.status == EpisodeStatus.COMPLETED
     assert survivor.error_message is None
+    assert survivor.title == "Finished cut"
+    assert (
+        survivor.source_url
+        == "https://stub.local/catalogue/hells-paradise/saison1/vostfr"
+    )
     assert Path(survivor.file_path or "") == expected
     assert Path(survivor.file_path or "").read_bytes() == payload
     assert repo.get_episode("ep-done") is None
     assert second.errors == []
     assert expected.read_bytes() == payload
+
+
+def test_same_season_merge_does_not_adopt_missing_incoming_file(
+    tmp_path: Path, session_factory
+) -> None:
+    library_root = tmp_path / "library"
+    repo = _repo(session_factory)
+    repo.upsert_series(Series(id="s-failed", title="Hell's Paradise", release_year=2023))
+    repo.upsert_season(Season(id="sea-failed", series_id="s-failed", number=1))
+    repo.upsert_episode(
+        Episode(
+            id="ep-failed",
+            season_id="sea-failed",
+            number=2,
+            title="Broken cut",
+            status=EpisodeStatus.FAILED,
+            source_url="https://stub.local/catalogue/hells-paradise/saison1/vf",
+            error_message="download failed",
+        )
+    )
+    good_path = library_root / "zzz-hells-paradise" / "1" / "S01E01.mp4"
+    _completed_episode(
+        repo,
+        series_id="s-done",
+        title="zzz-hells-paradise",
+        season_id="sea-done",
+        episode_id="ep-good",
+        number=1,
+        source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+        file_path=good_path,
+        payload=b"real-bytes",
+        episode_title="Real cut",
+    )
+    missing = library_root / "zzz-hells-paradise" / "1" / "S01E02.mp4"
+    repo.upsert_episode(
+        Episode(
+            id="ep-missing",
+            season_id="sea-done",
+            number=2,
+            title="Ghost cut",
+            status=EpisodeStatus.COMPLETED,
+            source_url="https://stub.local/catalogue/hells-paradise/saison1/vostfr",
+            file_path=str(missing),
+        )
+    )
+
+    report = migrate_library(
+        library=repo,
+        registry=AdapterRegistry([_MetaAdapter()]),
+        library_root=library_root,
+    )
+
+    failed = repo.get_episode("ep-failed")
+    assert failed is not None
+    assert failed.status == EpisodeStatus.FAILED
+    assert failed.file_path is None
+    assert failed.error_message == "download failed"
+    assert failed.title == "Broken cut"
+    assert failed.source_url == "https://stub.local/catalogue/hells-paradise/saison1/vf"
+    assert repo.get_episode("ep-missing") is None
+    assert any("Missing library file" in error for error in report.errors)
+    kept = build_episode_path(library_root, "Hell's Paradise", 2023, 1, 1, "mp4")
+    assert kept.read_bytes() == b"real-bytes"
 
 
 def test_same_season_merge_keeps_duplicate_when_files_differ(

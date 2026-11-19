@@ -63,6 +63,7 @@ def migrate_library(
                     library=library,
                     registry=registry,
                     library_root=library_root,
+                    series=series,
                     season_number=season.number,
                     episode=episode,
                     discovery_cache=discovery_cache,
@@ -103,11 +104,15 @@ def _migrate_episode(
     library: LibraryRepository,
     registry: AdapterRegistry,
     library_root: Path,
+    series: Series,
     season_number: int,
     episode: Episode,
     discovery_cache: _DiscoveryCache,
     errors: list[str],
 ) -> tuple[SeasonDiscovery | None, bool]:
+    if _already_on_jellyfin_path(library_root, series, season_number, episode):
+        return None, False
+
     try:
         source_url = SourceUrl.parse(episode.source_url)
         adapter = registry.resolve(source_url)
@@ -258,9 +263,11 @@ def _fold_episodes_into_season(
                     id=occupant.id,
                     season_id=occupant.season_id,
                     number=occupant.number,
-                    title=occupant.title,
+                    title=(
+                        episode.title if episode.title is not None else occupant.title
+                    ),
                     status=EpisodeStatus.COMPLETED,
-                    source_url=occupant.source_url,
+                    source_url=episode.source_url,
                     file_path=episode.file_path,
                     error_message=None,
                 )
@@ -282,10 +289,8 @@ def _episode_on_season(episode: Episode, season_id: str) -> Episode:
 
 
 def _should_adopt_incoming_file(incoming: Episode, occupant: Episode) -> bool:
-    return (
-        incoming.status == EpisodeStatus.COMPLETED
-        and bool(incoming.file_path)
-        and not _completed_with_existing_file(occupant)
+    return _completed_with_existing_file(incoming) and not _completed_with_existing_file(
+        occupant
     )
 
 
@@ -304,6 +309,26 @@ def _completed_with_existing_file(episode: Episode) -> bool:
         episode.status == EpisodeStatus.COMPLETED
         and _existing_file(episode.file_path) is not None
     )
+
+
+def _already_on_jellyfin_path(
+    library_root: Path,
+    series: Series,
+    season_number: int,
+    episode: Episode,
+) -> bool:
+    current = _existing_file(episode.file_path)
+    if current is None:
+        return False
+    expected = build_episode_path(
+        library_root,
+        series.title,
+        series.release_year,
+        season_number,
+        episode.number,
+        Path(episode.file_path or "").suffix.lstrip("."),
+    )
+    return current == expected.resolve()
 
 
 def _existing_file(file_path: str | None) -> Path | None:

@@ -28,6 +28,7 @@ from anime_downloader.infrastructure.db.session import (
 from tests.support.fake_season_adapter import FakeSeasonAdapter
 from anime_downloader.infrastructure.http_downloader import FakeMediaDownloader
 from anime_downloader.infrastructure.ids import UuidIdGenerator
+from anime_downloader.infrastructure.library_paths import build_episode_path
 from anime_downloader.infrastructure.persistence.job_repository import (
     SqlAlchemyJobRepository,
 )
@@ -242,6 +243,70 @@ def test_worker_writes_jellyfin_path_ignoring_episode_title(env) -> None:
     episodes = library.list_episodes(job.season_id)
     assert episodes[0].title == "The First Death"
     assert episodes[0].file_path == str(expected.resolve())
+
+
+def test_worker_second_download_overwrites_jellyfin_file(env) -> None:
+    jobs, library, library_root = env
+    registry = AdapterRegistry([FakeSeasonAdapter(episode_count=1)])
+    ids = UuidIdGenerator()
+    url = "https://fake.local/season/demo-show/1"
+    expected = build_episode_path(library_root, "demo-show", 2020, 1, 1, "mp4")
+
+    def run_download(payload: bytes, job_id: str) -> None:
+        worker = DownloadWorker(
+            jobs=jobs,
+            library=library,
+            registry=registry,
+            downloader=FakeMediaDownloader(payload=payload),
+            library_root=library_root,
+            sleep=lambda _: None,
+        )
+        worker.start_background()
+        try:
+            worker.enqueue(job_id)
+            assert worker.wait_idle(timeout=5.0)
+        finally:
+            worker.stop()
+
+    first = start_season_download(
+        url=url,
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+    run_download(b"first-bytes", first.id)
+    assert expected.read_bytes() == b"first-bytes"
+    assert first.season_id is not None
+    stored = library.list_episodes(first.season_id)[0]
+    library.upsert_episode(
+        Episode(
+            id=stored.id,
+            season_id=stored.season_id,
+            number=stored.number,
+            title=stored.title,
+            status=EpisodeStatus.PENDING,
+            source_url=stored.source_url,
+            file_path=stored.file_path,
+            error_message=None,
+        )
+    )
+
+    second = start_season_download(
+        url=url,
+        registry=registry,
+        jobs=jobs,
+        library=library,
+        ids=ids,
+    )
+    run_download(b"second-bytes", second.id)
+
+    assert expected.read_bytes() == b"second-bytes"
+    overwritten = library.list_episodes(first.season_id)[0]
+    assert overwritten.file_path == str(expected.resolve())
+    refreshed = jobs.get(second.id)
+    assert refreshed is not None
+    assert refreshed.status == JobStatus.COMPLETED
 
 
 def test_worker_transitions_through_running_and_downloading(

@@ -62,6 +62,7 @@ def test_ytdlp_downloader_writes_mp4_via_youtube_dl(
 
         def download(self, urls: list[str]) -> None:
             assert urls == ["https://cdn.example/ep.m3u8"]
+            assert self.options["overwrites"] is True
             outtmpl = self.options["outtmpl"]["default"]
             assert "%(ext)s" in outtmpl
             target = Path(outtmpl.replace("%(ext)s", "mp4"))

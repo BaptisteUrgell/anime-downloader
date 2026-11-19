@@ -54,6 +54,23 @@ def test_fetch_oeuvre_meta_parses_title_and_year():
     provider.close()
 
 
+def test_fetch_oeuvre_meta_unescapes_html_entities():
+    page = (
+        '<h1 id="titreOeuvre">Hell&#039;s Paradise &amp; Wolf</h1>'
+        '<p class="oe-meta">2023</p>'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=page)
+
+    provider = AnimeSamaProvider()
+    provider.client = httpx.Client(transport=httpx.MockTransport(handler))
+    title, year = provider.fetch_oeuvre_meta(OEUVRE_URL)
+    assert title == "Hell's Paradise & Wolf"
+    assert year == 2023
+    provider.close()
+
+
 def test_fetch_oeuvre_meta_missing_title_raises():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text='<p class="oe-meta">2023</p>')
